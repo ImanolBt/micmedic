@@ -1,0 +1,111 @@
+/* MedGo styles */
+:root{
+  --bg:#0b1220;
+  --card:#101a33;
+  --muted:#9fb0d0;
+  --text:#eaf0ff;
+  --brand:#4f8cff;
+  --ok:#2dd4bf;
+  --warn:#fb7185;
+  --line:rgba(255,255,255,.08);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: radial-gradient(1200px 700px at 20% 10%, rgba(79,140,255,.22), transparent 60%),
+              radial-gradient(900px 600px at 90% 20%, rgba(45,212,191,.18), transparent 55%),
+              var(--bg);
+  color:var(--text);
+}
+/* ===== MedGo UI Pro (rápido) ===== */
+.page { max-width: 1050px; margin: 0 auto; padding: 18px; }
+.topbar{
+  display:flex; justify-content:space-between; align-items:center;
+  background: rgba(16,26,51,.65);
+  border:1px solid rgba(255,255,255,.10);
+  padding:14px 16px; border-radius:16px;
+  backdrop-filter: blur(10px);
+  margin-bottom: 14px;
+}
+.brand{ display:flex; gap:10px; align-items:center; }
+.logo{
+  width:36px; height:36px; border-radius:12px;
+  background: linear-gradient(135deg, #4f8cff, #2dd4bf);
+}
+.btn{
+  padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.08); color: #eaf0ff; cursor:pointer; font-weight:700;
+}
+.btn:hover{ background: rgba(255,255,255,.12); }
+.btn.primary{ background: linear-gradient(135deg, #4f8cff, #7c3aed); border:none; }
+.btn.ok{ background: linear-gradient(135deg, #2dd4bf, #22c55e); border:none; }
+.btn.danger{ background: linear-gradient(135deg, #fb7185, #ef4444); border:none; }
+.card{
+  background: rgba(16,26,51,.65);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:16px; padding:14px;
+}
+.input{
+  width:100%; padding:12px 12px; border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.18); color:#eaf0ff; outline:none;
+}
+.input:focus{ border-color: rgba(79,140,255,.65); }
+.grid{ display:grid; gap:12px; }
+.grid2{ display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+@media(max-width:900px){ .grid2{ grid-template-columns:1fr; } }
+.chip{
+  display:inline-flex; gap:8px; align-items:center;
+  padding:7px 10px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.12); font-size:12px;
+}
+.chip.warn{ border-color: rgba(251,113,133,.35); background: rgba(251,113,133,.10); }
+.hr{ height:1px; background: rgba(255,255,255,.10); margin:12px 0; }
+
+/* Pacientes - extras */
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px; border-radius:999px;
+  font-size:12px; font-weight:800;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.12);
+}
+.badge.red{
+  border-color: rgba(251,113,133,.35);
+  background: rgba(251,113,133,.12);
+}
+.badge.blue{
+  border-color: rgba(79,140,255,.35);
+  background: rgba(79,140,255,.12);
+}
+.row{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:10px; flex-wrap:wrap;
+}
+/* Lista de pacientes con scroll interno */
+.patientListWrap{
+  height: 520px;            /* ajusta si quieres 480 / 600 */
+  overflow: auto;
+  padding-right: 6px;
+}
+
+/* scroll bonito (Chrome/Edge) */
+.patientListWrap::-webkit-scrollbar{
+  width: 10px;
+}
+.patientListWrap::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
+}
+.patientListWrap::-webkit-scrollbar-track{
+  background: rgba(0,0,0,.10);
+  border-radius: 999px;
+}
+
+/* Que el input de búsqueda no se achique raro */
+.searchBox{
+  width: 320px;
+  max-width: 100%;
+}
