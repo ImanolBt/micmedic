@@ -1,0 +1,238 @@
+:root{
+  --mm-green:#96b34a;
+  --mm-green2:#7aa63c;
+  --mm-dark:#1f2a1f;
+  --mm-border: rgba(0,0,0,.10);
+  --mm-muted: rgba(0,0,0,.60);
+  --mm-bg: #f4f7f3;
+  --mm-card: #ffffff;
+  --mm-radius: 18px;
+}
+
+.mm-page{
+  padding: 18px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.mm-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mm-title{
+  margin:0;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--mm-dark);
+  letter-spacing: .2px;
+}
+
+.mm-subtitle{
+  margin-top: 6px;
+  color: var(--mm-muted);
+  font-size: 13px;
+}
+
+.mm-searchWrap{
+  width: min(420px, 100%);
+}
+
+.mm-input{
+  width:100%;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--mm-border);
+  outline: none;
+  font-size: 14px;
+  background: #fff;
+}
+
+.mm-input:focus{
+  border-color: rgba(150,179,74,.65);
+  box-shadow: 0 0 0 4px rgba(150,179,74,.16);
+}
+
+.mm-grid{
+  display:grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 14px;
+}
+
+@media (max-width: 980px){
+  .mm-grid{ grid-template-columns: 1fr; }
+  .mm-header{ flex-direction: column; align-items: stretch; }
+  .mm-searchWrap{ width: 100%; }
+}
+
+.mm-card{
+  background: var(--mm-card);
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius);
+  box-shadow: 0 12px 35px rgba(0,0,0,.06);
+  overflow: hidden;
+}
+
+.mm-cardHead{
+  padding: 14px 14px;
+  background: linear-gradient(90deg, rgba(150,179,74,.20), rgba(122,166,60,.10));
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--mm-border);
+}
+
+.mm-cardTitle{
+  font-weight: 900;
+  color: var(--mm-dark);
+}
+
+.mm-chip{
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(31,42,31,.08);
+  color: rgba(31,42,31,.85);
+}
+
+.mm-form{
+  padding: 14px;
+  display:grid;
+  gap: 10px;
+}
+
+.mm-row{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mm-btn{
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  font-weight: 900;
+  background: var(--mm-dark);
+  color: white;
+}
+
+.mm-btn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.mm-btnPrimary{
+  background: linear-gradient(180deg, #6b49ff, #5a35ff);
+}
+
+.mm-btnGhost{
+  background: rgba(31,42,31,.06);
+  color: var(--mm-dark);
+  border: 1px solid rgba(31,42,31,.10);
+}
+
+.mm-hint{
+  font-size: 12px;
+  color: var(--mm-muted);
+}
+
+.mm-listArea{
+  padding: 14px;
+  /* IMPORTANTÍSIMO: esto evita que se "estire feo" */
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.mm-list{
+  display:grid;
+  gap: 10px;
+}
+
+.mm-item{
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: 18px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,1), rgba(244,247,243,.6));
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap: 12px;
+}
+
+.mm-itemInfo{
+  min-width: 0;
+}
+
+.mm-itemName{
+  font-weight: 950;
+  color: var(--mm-dark);
+  font-size: 18px;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.mm-itemMeta{
+  margin-top: 4px;
+  color: rgba(0,0,0,.70);
+  font-size: 13px;
+}
+
+.mm-itemMeta2{
+  margin-top: 6px;
+  color: rgba(0,0,0,.50);
+  font-size: 12px;
+}
+
+.mm-itemActions{
+  display:flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.mm-badgeWarn{
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 180, 0, .18);
+  border: 1px solid rgba(255, 180, 0, .35);
+  color: rgba(120, 60, 0, .95);
+}
+
+.mm-empty{
+  padding: 18px;
+  text-align:center;
+  color: var(--mm-muted);
+}
+
+.mm-toast{
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(150,179,74,.18);
+  border: 1px solid rgba(150,179,74,.35);
+  color: rgba(31,42,31,.9);
+  font-weight: 800;
+}
+.mm-nav{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  text-decoration: none;
+  font-weight: 900;
+  color: rgba(0,0,0,.70);
+  background: white;
+}
+
+.mm-nav.active{
+  color: rgba(0,0,0,.90);
+  border-color: rgba(150,179,74,.55);
+  box-shadow: 0 0 0 4px rgba(150,179,74,.14);
+}
