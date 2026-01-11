@@ -1,3 +1,8 @@
+<p style={{ color: "red", fontWeight: "bold" }}>
+  DEPLOY TEST MICMEDIC
+</p>
+
+
 import { useNavigate } from "react-router-dom";
 
 function toWaLink(phoneRaw) {
