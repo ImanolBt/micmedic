@@ -23,9 +23,8 @@ export default function Login() {
       alert(error.message);
       return;
     }
-
-    // Si tu App.jsx escucha cambios de sesión, con esto basta.
-    // Si no, puedes hacer: window.location.href = "/dashboard";
+    // No necesitas navegar manualmente:
+    // App.jsx detecta sesión y cambia solo
   };
 
   return (
@@ -37,7 +36,8 @@ export default function Login() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
-      <br /><br />
+      <br />
+      <br />
 
       <input
         type="password"
@@ -45,7 +45,8 @@ export default function Login() {
         value={pass}
         onChange={(e) => setPass(e.target.value)}
       />
-      <br /><br />
+      <br />
+      <br />
 
       <button onClick={handleLogin} disabled={loading}>
         {loading ? "Ingresando..." : "Ingresar"}
