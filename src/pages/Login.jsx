@@ -1,23 +1,55 @@
 import React, { useState } from "react";
+import { supabase } from "../lib/supabase";
 
-export default function Login({ onLogin }) {
-  const [user, setUser] = useState("");
+export default function Login() {
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
-    if (user === "doctora" && pass === "1234") {
-      onLogin({ name: "Dra. Andrea" });
-    } else {
-      alert("Usuario o contraseña incorrectos");
+  const handleLogin = async () => {
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    });
+
+    console.log("LOGIN data:", data);
+    console.log("LOGIN error:", error);
+
+    setLoading(false);
+
+    if (error) {
+      alert(error.message);
+      return;
     }
-  }
+
+    // Si tu App.jsx escucha cambios de sesión, con esto basta.
+    // Si no, puedes hacer: window.location.href = "/dashboard";
+  };
 
   return (
     <div style={{ padding: 40 }}>
-      <h2>MedGo - Login</h2>
-      <input placeholder="Usuario" onChange={e => setUser(e.target.value)} /><br /><br />
-      <input type="password" placeholder="Contraseña" onChange={e => setPass(e.target.value)} /><br /><br />
-      <button onClick={handleLogin}>Ingresar</button>
+      <h2>MicMEDIC - Login</h2>
+
+      <input
+        placeholder="Correo"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <br /><br />
+
+      <input
+        type="password"
+        placeholder="Contraseña"
+        value={pass}
+        onChange={(e) => setPass(e.target.value)}
+      />
+      <br /><br />
+
+      <button onClick={handleLogin} disabled={loading}>
+        {loading ? "Ingresando..." : "Ingresar"}
+      </button>
     </div>
   );
 }
