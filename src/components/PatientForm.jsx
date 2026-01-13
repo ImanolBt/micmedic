@@ -13,6 +13,7 @@ function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
+
   const today = new Date();
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
@@ -27,7 +28,7 @@ export default function PatientForm({ onCreate, disabled }) {
   const [phone, setPhone] = useState("");
 
   const [birthdate, setBirthdate] = useState(""); // YYYY-MM-DD
-  const [age, setAge] = useState(""); // string para input
+  const [ageManual, setAgeManual] = useState(""); // solo para referencia (NO se guarda)
 
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
@@ -37,10 +38,18 @@ export default function PatientForm({ onCreate, disabled }) {
   const canSubmit = useMemo(() => {
     const hasName = name.trim().length >= 3;
     const hasCedula = cedula.trim().length >= 8;
-    const ageNum = autoAge ?? (age ? Number(age) : null);
-    const hasAge = ageNum === null || (Number.isFinite(ageNum) && ageNum >= 0 && ageNum <= 130);
-    return hasName && hasCedula && hasAge;
-  }, [name, cedula, age, autoAge]);
+
+    // Exigir que exista birthdate o una edad manual válida (para que no quede vacío)
+    const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
+
+    let ageOk = true;
+    if (!birthdate && ageManual.trim() !== "") {
+      const n = Number(ageManual);
+      ageOk = Number.isFinite(n) && n >= 0 && n <= 130;
+    }
+
+    return hasName && hasCedula && hasBirthOrAge && ageOk;
+  }, [name, cedula, birthdate, ageManual]);
 
   function reset() {
     setName("");
@@ -48,7 +57,7 @@ export default function PatientForm({ onCreate, disabled }) {
     setCedula("");
     setPhone("");
     setBirthdate("");
-    setAge("");
+    setAgeManual("");
     setAllergiesCSV("");
     setNotes("");
   }
@@ -57,15 +66,13 @@ export default function PatientForm({ onCreate, disabled }) {
     e.preventDefault();
     if (!canSubmit || disabled) return;
 
-    const ageToSave = autoAge ?? (age ? Number(age) : null);
-
+    // RECOMENDADO: guardamos birthdate (si existe) y NO guardamos age
     const payload = {
       name: name.trim(),
       sex,
       cedula: cedula.trim(),
       phone: phone.trim() || null,
       birthdate: birthdate ? birthdate : null,
-      age: Number.isFinite(ageToSave) ? ageToSave : null, // <-- GUARDA age
       allergies: toTextArray(allergiesCSV),
       notes: notes.trim() || null,
     };
@@ -97,11 +104,15 @@ export default function PatientForm({ onCreate, disabled }) {
         <input
           className="mm-input"
           type="number"
-          placeholder="Edad"
-          value={autoAge ?? age}
-          onChange={(e) => setAge(e.target.value)}
+          placeholder="Edad (si no hay fecha)"
+          value={autoAge ?? ageManual}
+          onChange={(e) => setAgeManual(e.target.value)}
           disabled={disabled || autoAge !== null}
-          title={autoAge !== null ? "Se calcula desde la fecha de nacimiento" : "Edad manual"}
+          title={
+            autoAge !== null
+              ? "Se calcula desde la fecha de nacimiento"
+              : "Edad manual solo si no hay fecha"
+          }
         />
       </div>
 
@@ -153,7 +164,9 @@ export default function PatientForm({ onCreate, disabled }) {
         Registrar paciente
       </button>
 
-      <div className="mm-hint">Recomendado: fecha de nacimiento. La edad se calcula sola.</div>
+      <div className="mm-hint">
+        Recomendado: fecha de nacimiento. La edad se calcula sola (y no se guarda como columna).
+      </div>
     </form>
   );
 }

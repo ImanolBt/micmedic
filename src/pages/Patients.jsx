@@ -1,29 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
+
 import PatientForm from "../components/PatientForm";
 import PatientList from "../components/PatientList";
-import { supabase } from "../lib/supabase";
 
 export default function Patients() {
   const [patients, setPatients] = useState([]);
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState("");
+
+  const [q, setQ] = useState("");
 
   async function loadPatients() {
     setLoading(true);
-    setToast("");
+
     const { data, error } = await supabase
       .from("patients")
-      .select("*")
+      .select("id, name, cedula, phone, sex, birthdate, notes, allergies, created_at")
       .order("created_at", { ascending: false });
 
-    setLoading(false);
     if (error) {
-      setToast("No se pudo cargar pacientes.");
+      console.error(error);
+      alert(error.message);
+      setPatients([]);
+      setLoading(false);
       return;
     }
+
     setPatients(data || []);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -31,85 +36,75 @@ export default function Patients() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return patients;
+    const s = (q || "").trim().toLowerCase();
+    if (!s) return patients;
+
     return patients.filter((p) => {
-      const name = (p.full_name || "").toLowerCase();
-      const ci = (p.cedula || "").toLowerCase();
-      const tel = (p.phone || "").toLowerCase();
-      return name.includes(q) || ci.includes(q) || tel.includes(q);
+      const name = (p.name || "").toLowerCase();
+      const cedula = (p.cedula || "").toLowerCase();
+      const phone = (p.phone || "").toLowerCase();
+      return name.includes(s) || cedula.includes(s) || phone.includes(s);
     });
-  }, [patients, query]);
+  }, [q, patients]);
 
   async function addPatient(payload) {
     setSaving(true);
-    setToast("");
 
-    // insert
-    const { data, error } = await supabase
-      .from("patients")
-      .insert([payload])
-      .select()
-      .single();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+
+    const toInsert = {
+      ...payload,
+      created_by: userId,
+    };
+
+    const { error } = await supabase.from("patients").insert(toInsert);
 
     setSaving(false);
 
     if (error) {
-      // Probable: cédula duplicada (si tienes unique)
-      setToast(error.message || "Error al registrar paciente.");
+      console.error(error);
+      alert(error.message);
       return;
     }
 
-    setPatients((prev) => [data, ...prev]);
-    setToast("Paciente registrado.");
-    setTimeout(() => setToast(""), 1500);
+    await loadPatients();
   }
 
   return (
-    <div className="mm-page">
-      <div className="mm-header">
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 14px 30px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 className="mm-title">Pacientes</h1>
-          <div className="mm-subtitle">
-            Pacientes registrados: <b>{patients.length}</b>
-          </div>
+          <h1 style={{ margin: "10px 0 4px" }}>Pacientes</h1>
+          <div style={{ opacity: 0.75 }}>Pacientes registrados: {patients.length}</div>
         </div>
 
-        <div className="mm-searchWrap">
-          <input
-            className="mm-input mm-search"
-            placeholder="Buscar por nombre / cédula / teléfono…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+        <input
+          className="mm-search"
+          placeholder="Buscar por nombre / cédula / teléfono..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
-
-      {toast ? <div className="mm-toast">{toast}</div> : null}
 
       <div className="mm-grid">
         <section className="mm-card">
           <div className="mm-cardHead">
             <div className="mm-cardTitle">Nuevo paciente</div>
-            <div className="mm-chip">{saving ? "Guardando…" : "MicMEDIC"}</div>
+            <div className="mm-chip">{saving ? "Guardando..." : "MicMEDIC"}</div>
           </div>
+
           <PatientForm onCreate={addPatient} disabled={saving} />
         </section>
 
         <section className="mm-card">
           <div className="mm-cardHead">
             <div className="mm-cardTitle">Lista</div>
-            <div className="mm-chip">
-              {loading ? "Cargando…" : `${filtered.length} visibles`}
-            </div>
+            <div className="mm-chip">{loading ? "Cargando..." : `${filtered.length} visibles`}</div>
           </div>
 
           <div className="mm-listArea">
-            <PatientList
-              loading={loading}
-              patients={filtered}
-              onRefresh={loadPatients}
-            />
+            <PatientList loading={loading} patients={filtered} onRefresh={loadPatients} />
           </div>
         </section>
       </div>
