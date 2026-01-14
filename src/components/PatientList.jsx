@@ -1,3 +1,5 @@
+import { useNavigate } from "react-router-dom";
+
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
   const b = new Date(birthdate);
@@ -17,19 +19,26 @@ function formatAllergies(a) {
 }
 
 export default function PatientList({ loading, patients, onRefresh }) {
+  const nav = useNavigate();
+
   if (loading) {
-    return (
-      <div className="mm-empty">
-        Cargando pacientes...
-      </div>
-    );
+    return <div className="mm-empty">Cargando pacientes...</div>;
   }
 
   if (!patients || patients.length === 0) {
     return (
-      <div className="mm-empty">
-        No hay pacientes con ese filtro.
-        <button className="mm-btn mm-btn--ghost" onClick={onRefresh}>
+      <div
+        className="mm-empty"
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <span>No hay pacientes con ese filtro.</span>
+        <button className="mm-btn mm-btn--ghost" onClick={() => onRefresh?.()} type="button">
           Recargar
         </button>
       </div>
@@ -43,19 +52,40 @@ export default function PatientList({ loading, patients, onRefresh }) {
         const allergies = formatAllergies(p.allergies);
 
         return (
-          <div key={p.id} className="mm-item">
+          <div
+            key={p.id}
+            className="mm-item"
+            role="button"
+            tabIndex={0}
+            onClick={() => nav(`/patients/${p.id}`)}
+            onKeyDown={(e) => e.key === "Enter" && nav(`/patients/${p.id}`)}
+            style={{ cursor: "pointer" }}
+            title="Abrir ficha del paciente"
+          >
             <div className="mm-itemTop">
               <div className="mm-itemName">{p.name}</div>
               <div className="mm-chip">{p.sex === "M" ? "Masculino" : "Femenino"}</div>
             </div>
 
             <div className="mm-itemMeta">
-              <div><b>Cédula:</b> {p.cedula}</div>
-              <div><b>Tel:</b> {p.phone || "-"}</div>
-              <div><b>Edad:</b> {age !== null ? `${age} años` : "-"}</div>
-              <div><b>Nacimiento:</b> {p.birthdate || "-"}</div>
-              <div><b>Alergias:</b> {allergies || "-"}</div>
-              <div><b>Notas:</b> {p.notes || "-"}</div>
+              <div>
+                <b>Cédula:</b> {p.cedula}
+              </div>
+              <div>
+                <b>Tel:</b> {p.phone || "-"}
+              </div>
+              <div>
+                <b>Edad:</b> {age !== null ? `${age} años` : "-"}
+              </div>
+              <div>
+                <b>Nacimiento:</b> {p.birthdate || "-"}
+              </div>
+              <div>
+                <b>Alergias:</b> {allergies || "-"}
+              </div>
+              <div>
+                <b>Notas:</b> {p.notes || "-"}
+              </div>
             </div>
           </div>
         );

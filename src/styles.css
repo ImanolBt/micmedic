@@ -1,111 +1,369 @@
-/* MedGo styles */
+/* =========================
+   MicMEDIC UI (Global)
+   ========================= */
+
 :root{
-  --bg:#0b1220;
-  --card:#101a33;
-  --muted:#9fb0d0;
-  --text:#eaf0ff;
-  --brand:#4f8cff;
-  --ok:#2dd4bf;
-  --warn:#fb7185;
-  --line:rgba(255,255,255,.08);
+  --bg: #f4f7f3;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: rgba(15, 23, 42, .65);
+  --line: rgba(15, 23, 42, .10);
+
+  --brand: #7aa63c;
+  --brand2: #96b34a;
+
+  --shadow: 0 14px 40px rgba(15, 23, 42, .10);
+  --shadow2: 0 10px 24px rgba(15, 23, 42, .10);
+
+  --radius: 18px;
+  --radius2: 14px;
+
+  --danger: #dc2626;
+  --danger2: #b91c1c;
+
+  --chipBg: rgba(122, 166, 60, .12);
+  --chipText: #245b1e;
+
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
 }
-*{box-sizing:border-box}
+
+*{ box-sizing: border-box; }
+html, body { height: 100%; }
 body{
-  margin:0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  background: radial-gradient(1200px 700px at 20% 10%, rgba(79,140,255,.22), transparent 60%),
-              radial-gradient(900px 600px at 90% 20%, rgba(45,212,191,.18), transparent 55%),
+  margin: 0;
+  font-family: var(--font);
+  background: radial-gradient(1200px 700px at 15% 0%, rgba(150,179,74,.14), transparent 55%),
+              radial-gradient(900px 600px at 85% 10%, rgba(122,166,60,.12), transparent 55%),
               var(--bg);
-  color:var(--text);
-}
-/* ===== MedGo UI Pro (rápido) ===== */
-.page { max-width: 1050px; margin: 0 auto; padding: 18px; }
-.topbar{
-  display:flex; justify-content:space-between; align-items:center;
-  background: rgba(16,26,51,.65);
-  border:1px solid rgba(255,255,255,.10);
-  padding:14px 16px; border-radius:16px;
-  backdrop-filter: blur(10px);
-  margin-bottom: 14px;
-}
-.brand{ display:flex; gap:10px; align-items:center; }
-.logo{
-  width:36px; height:36px; border-radius:12px;
-  background: linear-gradient(135deg, #4f8cff, #2dd4bf);
-}
-.btn{
-  padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.08); color: #eaf0ff; cursor:pointer; font-weight:700;
-}
-.btn:hover{ background: rgba(255,255,255,.12); }
-.btn.primary{ background: linear-gradient(135deg, #4f8cff, #7c3aed); border:none; }
-.btn.ok{ background: linear-gradient(135deg, #2dd4bf, #22c55e); border:none; }
-.btn.danger{ background: linear-gradient(135deg, #fb7185, #ef4444); border:none; }
-.card{
-  background: rgba(16,26,51,.65);
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:16px; padding:14px;
-}
-.input{
-  width:100%; padding:12px 12px; border-radius:14px;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(0,0,0,.18); color:#eaf0ff; outline:none;
-}
-.input:focus{ border-color: rgba(79,140,255,.65); }
-.grid{ display:grid; gap:12px; }
-.grid2{ display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
-@media(max-width:900px){ .grid2{ grid-template-columns:1fr; } }
-.chip{
-  display:inline-flex; gap:8px; align-items:center;
-  padding:7px 10px; border-radius:999px;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(0,0,0,.12); font-size:12px;
-}
-.chip.warn{ border-color: rgba(251,113,133,.35); background: rgba(251,113,133,.10); }
-.hr{ height:1px; background: rgba(255,255,255,.10); margin:12px 0; }
-
-/* Pacientes - extras */
-.badge{
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 10px; border-radius:999px;
-  font-size:12px; font-weight:800;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(0,0,0,.12);
-}
-.badge.red{
-  border-color: rgba(251,113,133,.35);
-  background: rgba(251,113,133,.12);
-}
-.badge.blue{
-  border-color: rgba(79,140,255,.35);
-  background: rgba(79,140,255,.12);
-}
-.row{
-  display:flex; justify-content:space-between; align-items:center;
-  gap:10px; flex-wrap:wrap;
-}
-/* Lista de pacientes con scroll interno */
-.patientListWrap{
-  height: 520px;            /* ajusta si quieres 480 / 600 */
-  overflow: auto;
-  padding-right: 6px;
+  color: var(--text);
 }
 
-/* scroll bonito (Chrome/Edge) */
-.patientListWrap::-webkit-scrollbar{
-  width: 10px;
-}
-.patientListWrap::-webkit-scrollbar-thumb{
-  background: rgba(255,255,255,.12);
+/* Smooth */
+button, input, select { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+
+/* =========================
+   Nav links (top menu)
+   ========================= */
+.mm-nav{
+  padding: 10px 14px;
   border-radius: 999px;
-}
-.patientListWrap::-webkit-scrollbar-track{
-  background: rgba(0,0,0,.10);
-  border-radius: 999px;
+  background: rgba(255,255,255,.65);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 22px rgba(15,23,42,.06);
+  font-weight: 900;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
 }
 
-/* Que el input de búsqueda no se achique raro */
-.searchBox{
-  width: 320px;
-  max-width: 100%;
+.mm-nav:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(15,23,42,.10);
+  border-color: rgba(122,166,60,.30);
+}
+
+.mm-nav.active{
+  background: rgba(122,166,60,.14);
+  border-color: rgba(122,166,60,.35);
+}
+
+/* =========================
+   Layout helpers
+   ========================= */
+.mm-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 1000px){
+  .mm-grid{ grid-template-columns: 1fr; }
+}
+
+/* Header rows */
+.mm-titleRow{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* =========================
+   Cards
+   ========================= */
+.mm-card{
+  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.88));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow2);
+  overflow: hidden;
+}
+
+.mm-cardHead{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(150,179,74,.10), rgba(255,255,255,0));
+}
+
+.mm-cardTitle{
+  font-weight: 950;
+  letter-spacing: .2px;
+}
+
+/* =========================
+   Chips
+   ========================= */
+.mm-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 12px;
+  border: 1px solid rgba(122,166,60,.24);
+  background: var(--chipBg);
+  color: var(--chipText);
+}
+
+/* Status chips for Agenda (optional) */
+.mm-chip--scheduled{
+  background: rgba(59,130,246,.12);
+  border-color: rgba(59,130,246,.22);
+  color: rgba(30,64,175,1);
+}
+.mm-chip--done{
+  background: rgba(34,197,94,.14);
+  border-color: rgba(34,197,94,.22);
+  color: rgba(20,83,45,1);
+}
+.mm-chip--cancelled{
+  background: rgba(244,63,94,.12);
+  border-color: rgba(244,63,94,.22);
+  color: rgba(159,18,57,1);
+}
+
+/* =========================
+   Forms
+   ========================= */
+.mm-form{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.mm-row{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 560px){
+  .mm-row{ grid-template-columns: 1fr; }
+}
+
+.mm-input{
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15,23,42,.14);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 10px 22px rgba(15,23,42,.04);
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  font-weight: 700;
+}
+
+.mm-input::placeholder{
+  color: rgba(15,23,42,.45);
+  font-weight: 600;
+}
+
+.mm-input:focus{
+  border-color: rgba(122,166,60,.55);
+  box-shadow: 0 16px 30px rgba(122,166,60,.12);
+  transform: translateY(-1px);
+}
+
+.mm-input:disabled{
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Better select arrow feel (basic) */
+select.mm-input{
+  cursor: pointer;
+}
+
+/* =========================
+   Buttons
+   ========================= */
+.mm-btn{
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(90deg, var(--brand2), var(--brand));
+  color: white;
+  font-weight: 950;
+  box-shadow: 0 16px 30px rgba(122,166,60,.18);
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+
+.mm-btn:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 22px 40px rgba(122,166,60,.22);
+}
+
+.mm-btn:active{
+  transform: translateY(0px);
+}
+
+.mm-btn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Ghost */
+.mm-btn--ghost{
+  background: rgba(255,255,255,.86);
+  color: rgba(15,23,42,.92);
+  border: 1px solid rgba(15,23,42,.12);
+  box-shadow: 0 12px 24px rgba(15,23,42,.06);
+}
+
+.mm-btn--ghost:hover{
+  border-color: rgba(122,166,60,.35);
+  box-shadow: 0 18px 34px rgba(15,23,42,.10);
+}
+
+/* Active toggle */
+.mm-btn--active{
+  background: rgba(122,166,60,.16);
+  border: 1px solid rgba(122,166,60,.35);
+}
+
+/* Danger */
+.mm-btn--danger{
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  box-shadow: 0 16px 30px rgba(239,68,68,.16);
+}
+
+.mm-btn--danger:hover{
+  box-shadow: 0 22px 40px rgba(239,68,68,.20);
+}
+
+/* =========================
+   Lists
+   ========================= */
+.mm-list{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.mm-item{
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: var(--radius2);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 12px 24px rgba(15,23,42,.06);
+  padding: 12px;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.mm-item:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(15,23,42,.10);
+  border-color: rgba(122,166,60,.30);
+}
+
+.mm-itemTop{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mm-itemName{
+  font-weight: 950;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.mm-itemMeta{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  color: rgba(15,23,42,.88);
+  font-weight: 650;
+}
+
+@media (max-width: 700px){
+  .mm-itemMeta{ grid-template-columns: 1fr; }
+}
+
+.mm-itemMeta b{
+  color: rgba(15,23,42,.85);
+}
+
+/* Empty */
+.mm-empty{
+  padding: 18px;
+  border: 1px dashed rgba(15,23,42,.18);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,.70);
+  color: rgba(15,23,42,.70);
+  font-weight: 800;
+}
+
+/* Hint */
+.mm-hint{
+  font-size: 12px;
+  color: rgba(15,23,42,.58);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+/* =========================
+   Modal (edit appointment)
+   ========================= */
+.mm-modalBackdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  z-index: 9999;
+}
+
+/* Optional: nicer scrollbar on desktop */
+@media (min-width: 900px){
+  ::-webkit-scrollbar{ width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb{
+    background: rgba(15,23,42,.18);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover{
+    background: rgba(15,23,42,.24);
+  }
+}
+
+/* =========================
+   Small improvements for your top bar
+   ========================= */
+button{
+  -webkit-tap-highlight-color: transparent;
 }

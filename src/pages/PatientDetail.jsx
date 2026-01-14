@@ -1,190 +1,254 @@
-import React, { useMemo, useState } from "react";
-import { generarRecetaPDF } from "../utils/pdf";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
-export default function PatientDetail({ patient, onBack, onUpdatePatient }) {
-  const [diagnostico, setDiagnostico] = useState("");
-  const [tratamiento, setTratamiento] = useState("");
+function toTextArray(csv) {
+  const s = (csv || "").trim();
+  if (!s) return [];
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
-  const [editMode, setEditMode] = useState(false);
-  const [edit, setEdit] = useState({
-    phone: patient?.phone || "",
-    allergies: (patient?.allergies || []).join(", "),
-    antecedentes: (patient?.antecedentes || []).join(", "),
-  });
+function arrToCSV(a) {
+  if (Array.isArray(a)) return a.filter(Boolean).join(", ");
+  if (typeof a === "string") return a;
+  return "";
+}
 
-  const chips = useMemo(() => {
-    return {
-      allergies: patient?.allergies?.length ? patient.allergies.join(", ") : "Ninguna",
-      antecedentes: patient?.antecedentes?.length ? patient.antecedentes.join(", ") : "—",
-    };
-  }, [patient]);
+function calcAgeFromBirthdate(birthdate) {
+  if (!birthdate) return null;
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  return age >= 0 ? age : null;
+}
 
-  if (!patient) return <div className="card">No hay paciente seleccionado.</div>;
+export default function PatientDetail() {
+  const { id } = useParams();
+  const nav = useNavigate();
 
-  function hoy() {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${d.getFullYear()}-${mm}-${dd}`;
-  }
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [patient, setPatient] = useState(null);
 
-  function guardarConsulta() {
-    if (!diagnostico.trim() || !tratamiento.trim()) {
-      return alert("Completa diagnóstico y tratamiento.");
+  // form
+  const [name, setName] = useState("");
+  const [sex, setSex] = useState("F");
+  const [cedula, setCedula] = useState("");
+  const [phone, setPhone] = useState("");
+  const [birthdate, setBirthdate] = useState("");
+  const [age, setAge] = useState(""); // manual
+  const [allergiesCSV, setAllergiesCSV] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("patients")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (!alive) return;
+
+      if (error) {
+        alert("No se pudo cargar el paciente: " + error.message);
+        setLoading(false);
+        return;
+      }
+
+      setPatient(data);
+
+      setName(data.name || "");
+      setSex(data.sex || "F");
+      setCedula(data.cedula || "");
+      setPhone(data.phone || "");
+      setBirthdate(data.birthdate || "");
+      setAge(data.age != null ? String(data.age) : "");
+      setAllergiesCSV(arrToCSV(data.allergies));
+      setNotes(data.notes || "");
+
+      setLoading(false);
     }
 
-    const nuevaConsulta = {
-      id: Date.now(),
-      fecha: hoy(),
-      diagnostico: diagnostico.trim(),
-      tratamiento: tratamiento.trim(),
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  const canSave = useMemo(() => {
+    const hasName = name.trim().length >= 3;
+    const hasCedula = cedula.trim().length >= 8;
+
+    const ageNum = autoAge ?? (age ? Number(age) : null);
+    const okAge = ageNum === null || (Number.isFinite(ageNum) && ageNum >= 0 && ageNum <= 130);
+
+    return hasName && hasCedula && okAge;
+  }, [name, cedula, age, autoAge]);
+
+  async function onSave() {
+    if (!canSave || saving) return;
+
+    setSaving(true);
+    const ageToSave = autoAge ?? (age ? Number(age) : null);
+
+    const payload = {
+      name: name.trim(),
+      sex,
+      cedula: cedula.trim(),
+      phone: phone.trim() || null,
+      birthdate: birthdate || null,
+      age: Number.isFinite(ageToSave) ? ageToSave : null,
+      allergies: toTextArray(allergiesCSV),
+      notes: notes.trim() || null,
     };
 
-    const updated = {
-      ...patient,
-      history: [nuevaConsulta, ...(patient.history || [])],
-    };
+    const { error } = await supabase.from("patients").update(payload).eq("id", id);
 
-    onUpdatePatient(updated);
-    setDiagnostico("");
-    setTratamiento("");
+    setSaving(false);
+
+    if (error) {
+      alert("No se pudo guardar: " + error.message);
+      return;
+    }
+
+    alert("Paciente actualizado ✅");
+    nav("/patients");
   }
 
-  function pdfDeConsulta(c) {
-    generarRecetaPDF({
-      doctor: "Dra. Andrea",
-      paciente: `${patient.name} (CI: ${patient.cedula})`,
-      diagnostico: c.diagnostico,
-      tratamiento: c.tratamiento,
-    });
+  async function onDelete() {
+    if (!patient) return;
+    const ok = confirm(`¿Eliminar a "${patient.name}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+
+    setSaving(true);
+    const { error } = await supabase.from("patients").delete().eq("id", id);
+    setSaving(false);
+
+    if (error) {
+      alert("No se pudo eliminar: " + error.message);
+      return;
+    }
+
+    alert("Paciente eliminado ✅");
+    nav("/patients");
   }
 
-  function pdfActual() {
-    generarRecetaPDF({
-      doctor: "Dra. Andrea",
-      paciente: `${patient.name} (CI: ${patient.cedula})`,
-      diagnostico,
-      tratamiento,
-    });
-  }
-
-  function guardarEdicion() {
-    const allergiesArr = edit.allergies
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-    const antArr = edit.antecedentes
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-    const updated = {
-      ...patient,
-      phone: edit.phone.trim(),
-      allergies: allergiesArr,
-      antecedentes: antArr,
-    };
-
-    onUpdatePatient(updated);
-    setEditMode(false);
-  }
+  if (loading) return <div className="mm-empty">Cargando ficha...</div>;
+  if (!patient) return <div className="mm-empty">Paciente no encontrado.</div>;
 
   return (
-    <div className="grid">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <button className="btn" onClick={onBack}>← Volver</button>
-
-        {!editMode ? (
-          <button className="btn primary" onClick={() => { setEditMode(true); }}>
-            Editar paciente
-          </button>
-        ) : (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn ok" onClick={guardarEdicion}>Guardar cambios</button>
-            <button className="btn" onClick={() => setEditMode(false)}>Cancelar</button>
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <h2 style={{ margin: 0 }}>{patient.name}</h2>
-        <div style={{ opacity: 0.8, marginTop: 6 }}>
-          <b>Edad:</b> {patient.age} — <b>Sexo:</b> {patient.sex} <br />
-          <b>CI:</b> {patient.cedula} — <b>Tel:</b> {patient.phone || "—"}
+    <div className="mm-wrap">
+      <div className="mm-card">
+        <div className="mm-cardHead">
+          <div className="mm-cardTitle">Ficha del paciente</div>
+          <div className="mm-chip">{saving ? "Guardando..." : "MicMEDIC"}</div>
         </div>
 
-        <div className="hr" />
+        <div className="mm-form">
+          <input
+            className="mm-input"
+            placeholder="Nombre completo"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={saving}
+          />
 
-        {!editMode ? (
+          <div className="mm-row">
+            <input
+              className="mm-input"
+              type="date"
+              value={birthdate}
+              onChange={(e) => setBirthdate(e.target.value)}
+              disabled={saving}
+              title="Fecha de nacimiento"
+            />
+
+            <input
+              className="mm-input"
+              type="number"
+              placeholder="Edad"
+              value={autoAge ?? age}
+              onChange={(e) => setAge(e.target.value)}
+              disabled={saving || autoAge !== null}
+              title={autoAge !== null ? "Se calcula desde la fecha de nacimiento" : "Edad manual"}
+            />
+          </div>
+
+          <div className="mm-row">
+            <input
+              className="mm-input"
+              placeholder="Cédula"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value)}
+              disabled={saving}
+            />
+
+            <select className="mm-input" value={sex} onChange={(e) => setSex(e.target.value)} disabled={saving}>
+              <option value="F">Femenino</option>
+              <option value="M">Masculino</option>
+            </select>
+          </div>
+
+          <input
+            className="mm-input"
+            placeholder="Teléfono (ej: 0991234567)"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            disabled={saving}
+          />
+
+          <input
+            className="mm-input"
+            placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
+            value={allergiesCSV}
+            onChange={(e) => setAllergiesCSV(e.target.value)}
+            disabled={saving}
+          />
+
+          <input
+            className="mm-input"
+            placeholder="Notas (opcional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={saving}
+          />
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <span className="chip warn"><b>Alergias:</b>&nbsp;{chips.allergies}</span>
-            <span className="chip"><b>Antecedentes:</b>&nbsp;{chips.antecedentes}</span>
+            <button className="mm-btn" onClick={onSave} disabled={!canSave || saving} type="button">
+              Guardar cambios
+            </button>
+
+            <button className="mm-btn mm-btn--ghost" onClick={() => nav("/patients")} disabled={saving} type="button">
+              Volver
+            </button>
+
+            <button
+              className="mm-btn"
+              onClick={onDelete}
+              disabled={saving}
+              type="button"
+              style={{ background: "#b42318" }}
+            >
+              Eliminar
+            </button>
           </div>
-        ) : (
-          <div className="grid" style={{ marginTop: 10 }}>
-            <label style={{ opacity: 0.8 }}>Teléfono</label>
-            <input className="input" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} />
 
-            <label style={{ opacity: 0.8 }}>Alergias (separadas por comas)</label>
-            <input className="input" value={edit.allergies} onChange={(e) => setEdit({ ...edit, allergies: e.target.value })} />
-
-            <label style={{ opacity: 0.8 }}>Antecedentes (separados por comas)</label>
-            <input className="input" value={edit.antecedentes} onChange={(e) => setEdit({ ...edit, antecedentes: e.target.value })} />
+          <div className="mm-hint">
+            Tip: Si pones fecha de nacimiento, la edad se calcula sola y también se guarda.
           </div>
-        )}
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Nueva consulta</h3>
-
-        <input
-          className="input"
-          placeholder="Diagnóstico"
-          value={diagnostico}
-          onChange={(e) => setDiagnostico(e.target.value)}
-        />
-
-        <div style={{ height: 10 }} />
-
-        <textarea
-          className="input"
-          placeholder="Tratamiento / Indicaciones"
-          value={tratamiento}
-          onChange={(e) => setTratamiento(e.target.value)}
-          rows={5}
-        />
-
-        <div style={{ height: 12 }} />
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn ok" onClick={guardarConsulta}>Guardar consulta</button>
-          <button className="btn primary" onClick={pdfActual}>PDF de esta consulta</button>
         </div>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Historial clínico</h3>
-
-        {(!patient.history || patient.history.length === 0) ? (
-          <div style={{ opacity: 0.75 }}>Aún no hay consultas registradas.</div>
-        ) : (
-          <div className="grid">
-            {patient.history.map((c) => (
-              <div key={c.id} className="card" style={{ background: "rgba(0,0,0,.12)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <b>{c.fecha}</b>
-                  <button className="btn" onClick={() => pdfDeConsulta(c)}>PDF</button>
-                </div>
-
-                <div style={{ marginTop: 8 }}>
-                  <div><b>Diagnóstico:</b> {c.diagnostico}</div>
-                  <div><b>Tratamiento:</b> {c.tratamiento}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
