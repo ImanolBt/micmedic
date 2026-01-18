@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, NavLink, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
+import VisitDetail from "./pages/VisitDetail.jsx";
+import PrescriptionDetail from "./pages/PrescriptionDetail.jsx";
 
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Patients from "./pages/Patients.jsx";
 import PatientDetail from "./pages/PatientDetail.jsx";
+
 import Agenda from "./pages/Agenda.jsx";
 
 export default function App() {
@@ -99,6 +102,9 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/patients" element={<Patients />} />
         <Route path="/patients/:id" element={<PatientDetail />} />
+        <Route path="/visits/:id" element={<VisitDetail />} />
+        <Route path="/visits/:id/prescription" element={<PrescriptionDetail />} />
+
         <Route path="/agenda" element={<Agenda />} />
 
         {/* fallback */}

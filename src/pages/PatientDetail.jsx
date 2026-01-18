@@ -1,252 +1,204 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import VisitForm from "../components/VisitForm";
 
-function toTextArray(csv) {
-  const s = (csv || "").trim();
-  if (!s) return [];
-  return s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
-function arrToCSV(a) {
-  if (Array.isArray(a)) return a.filter(Boolean).join(", ");
-  if (typeof a === "string") return a;
-  return "";
-}
-
-function calcAgeFromBirthdate(birthdate) {
-  if (!birthdate) return null;
-  const b = new Date(birthdate);
-  if (Number.isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age >= 0 ? age : null;
+function formatVisitDate(dt) {
+  if (!dt) return "-";
+  const d = new Date(dt);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString();
 }
 
 export default function PatientDetail() {
-  const { id } = useParams();
+  const { id } = useParams(); // /patients/:id
   const nav = useNavigate();
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [patient, setPatient] = useState(null);
-
-  // form
-  const [name, setName] = useState("");
-  const [sex, setSex] = useState("F");
-  const [cedula, setCedula] = useState("");
-  const [phone, setPhone] = useState("");
-  const [birthdate, setBirthdate] = useState("");
-  const [age, setAge] = useState(""); // manual
-  const [allergiesCSV, setAllergiesCSV] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
-
-  useEffect(() => {
-    let alive = true;
-
-    async function load() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (!alive) return;
-
-      if (error) {
-        alert("No se pudo cargar el paciente: " + error.message);
-        setLoading(false);
-        return;
-      }
-
-      setPatient(data);
-
-      setName(data.name || "");
-      setSex(data.sex || "F");
-      setCedula(data.cedula || "");
-      setPhone(data.phone || "");
-      setBirthdate(data.birthdate || "");
-      setAge(data.age != null ? String(data.age) : "");
-      setAllergiesCSV(arrToCSV(data.allergies));
-      setNotes(data.notes || "");
-
-      setLoading(false);
-    }
-
-    load();
-    return () => {
-      alive = false;
-    };
+  const patientId = useMemo(() => {
+    const n = Number(id);
+    return Number.isFinite(n) ? n : null; // patients.id es bigint
   }, [id]);
 
-  const canSave = useMemo(() => {
-    const hasName = name.trim().length >= 3;
-    const hasCedula = cedula.trim().length >= 8;
+  const [loading, setLoading] = useState(true);
+  const [patient, setPatient] = useState(null);
 
-    const ageNum = autoAge ?? (age ? Number(age) : null);
-    const okAge = ageNum === null || (Number.isFinite(ageNum) && ageNum >= 0 && ageNum <= 130);
+  const [visits, setVisits] = useState([]);
+  const [loadingVisits, setLoadingVisits] = useState(true);
 
-    return hasName && hasCedula && okAge;
-  }, [name, cedula, age, autoAge]);
+  async function loadAll() {
+    if (!patientId) return;
 
-  async function onSave() {
-    if (!canSave || saving) return;
+    setLoading(true);
+    setLoadingVisits(true);
 
-    setSaving(true);
-    const ageToSave = autoAge ?? (age ? Number(age) : null);
-
-    const payload = {
-      name: name.trim(),
-      sex,
-      cedula: cedula.trim(),
-      phone: phone.trim() || null,
-      birthdate: birthdate || null,
-      age: Number.isFinite(ageToSave) ? ageToSave : null,
-      allergies: toTextArray(allergiesCSV),
-      notes: notes.trim() || null,
-    };
-
-    const { error } = await supabase.from("patients").update(payload).eq("id", id);
-
-    setSaving(false);
-
-    if (error) {
-      alert("No se pudo guardar: " + error.message);
+    const p = await supabase.from("patients").select("*").eq("id", patientId).single();
+    if (p.error) {
+      console.error(p.error);
+      alert("No se pudo cargar el paciente");
+      setLoading(false);
+      setLoadingVisits(false);
       return;
     }
+    setPatient(p.data);
 
-    alert("Paciente actualizado ✅");
-    nav("/patients");
+    const v = await supabase
+      .from("medical_visits")
+      .select("id, visit_date, reason, cie10_code, cie10_name, notes, created_at")
+      .eq("patient_id", patientId)
+      .order("visit_date", { ascending: false });
+
+    if (v.error) {
+      console.error(v.error);
+      setVisits([]);
+    } else {
+      setVisits(v.data || []);
+    }
+
+    setLoading(false);
+    setLoadingVisits(false);
   }
 
-  async function onDelete() {
-    if (!patient) return;
-    const ok = confirm(`¿Eliminar a "${patient.name}"? Esta acción no se puede deshacer.`);
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line
+  }, [patientId]);
+
+  async function deleteVisit(visitId) {
+    const ok = confirm("¿Eliminar esta consulta?");
     if (!ok) return;
 
-    setSaving(true);
-    const { error } = await supabase.from("patients").delete().eq("id", id);
-    setSaving(false);
-
+    const { error } = await supabase.from("medical_visits").delete().eq("id", visitId);
     if (error) {
-      alert("No se pudo eliminar: " + error.message);
+      console.error(error);
+      alert(error.message || "No se pudo eliminar");
       return;
     }
-
-    alert("Paciente eliminado ✅");
-    nav("/patients");
+    loadAll();
   }
 
+  if (!patientId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando ficha...</div>;
   if (!patient) return <div className="mm-empty">Paciente no encontrado.</div>;
 
   return (
-    <div className="mm-wrap">
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
+      {/* Header paciente */}
       <div className="mm-card">
-        <div className="mm-cardHead">
-          <div className="mm-cardTitle">Ficha del paciente</div>
-          <div className="mm-chip">{saving ? "Guardando..." : "MicMEDIC"}</div>
-        </div>
-
-        <div className="mm-form">
-          <input
-            className="mm-input"
-            placeholder="Nombre completo"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={saving}
-          />
-
-          <div className="mm-row">
-            <input
-              className="mm-input"
-              type="date"
-              value={birthdate}
-              onChange={(e) => setBirthdate(e.target.value)}
-              disabled={saving}
-              title="Fecha de nacimiento"
-            />
-
-            <input
-              className="mm-input"
-              type="number"
-              placeholder="Edad"
-              value={autoAge ?? age}
-              onChange={(e) => setAge(e.target.value)}
-              disabled={saving || autoAge !== null}
-              title={autoAge !== null ? "Se calcula desde la fecha de nacimiento" : "Edad manual"}
-            />
+        <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
+          <div>
+            <div className="mm-cardTitle">{patient.name}</div>
+            <div style={{ opacity: 0.85, fontSize: 13 }}>
+              Cédula: <b>{patient.cedula}</b> · Tel: <b>{patient.phone || "-"}</b>
+            </div>
           </div>
 
-          <div className="mm-row">
-            <input
-              className="mm-input"
-              placeholder="Cédula"
-              value={cedula}
-              onChange={(e) => setCedula(e.target.value)}
-              disabled={saving}
-            />
-
-            <select className="mm-input" value={sex} onChange={(e) => setSex(e.target.value)} disabled={saving}>
-              <option value="F">Femenino</option>
-              <option value="M">Masculino</option>
-            </select>
-          </div>
-
-          <input
-            className="mm-input"
-            placeholder="Teléfono (ej: 0991234567)"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={saving}
-          />
-
-          <input
-            className="mm-input"
-            placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
-            value={allergiesCSV}
-            onChange={(e) => setAllergiesCSV(e.target.value)}
-            disabled={saving}
-          />
-
-          <input
-            className="mm-input"
-            placeholder="Notas (opcional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={saving}
-          />
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="mm-btn" onClick={onSave} disabled={!canSave || saving} type="button">
-              Guardar cambios
-            </button>
-
-            <button className="mm-btn mm-btn--ghost" onClick={() => nav("/patients")} disabled={saving} type="button">
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="mm-btn mm-btn--ghost" type="button" onClick={() => nav("/patients")}>
               Volver
             </button>
+          </div>
+        </div>
 
-            <button
-              className="mm-btn"
-              onClick={onDelete}
-              disabled={saving}
-              type="button"
-              style={{ background: "#b42318" }}
-            >
-              Eliminar
-            </button>
+        <div className="mm-itemMeta" style={{ padding: 14 }}>
+          <div>
+            <b>Sexo:</b> {patient.sex === "M" ? "Masculino" : "Femenino"}
+          </div>
+          <div>
+            <b>Nacimiento:</b> {patient.birthdate || "-"}
+          </div>
+          <div>
+            <b>Edad:</b> {patient.age ?? "-"}
+          </div>
+          <div>
+            <b>Alergias:</b>{" "}
+            {Array.isArray(patient.allergies)
+              ? patient.allergies.join(", ")
+              : patient.allergies || "-"}
+          </div>
+          <div>
+            <b>Notas:</b> {patient.notes || "-"}
+          </div>
+        </div>
+      </div>
+
+      {/* Grid: Nueva consulta + Historial */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <VisitForm patientId={patientId} onCreated={loadAll} />
+
+        <div className="mm-card">
+          <div className="mm-cardHead">
+            <div className="mm-cardTitle">Historial de consultas</div>
+            <div className="mm-chip">{loadingVisits ? "Cargando..." : `${visits.length} registros`}</div>
           </div>
 
-          <div className="mm-hint">
-            Tip: Si pones fecha de nacimiento, la edad se calcula sola y también se guarda.
+          <div style={{ padding: 14, display: "grid", gap: 10 }}>
+            {loadingVisits && <div className="mm-empty">Cargando...</div>}
+
+            {!loadingVisits && visits.length === 0 && (
+              <div className="mm-empty">No hay consultas registradas.</div>
+            )}
+
+            {!loadingVisits &&
+              visits.map((v) => {
+                const go = () => nav(`/visits/${v.id}`);
+
+                return (
+                  <div
+                    key={v.id}
+                    className="mm-item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={go}
+                    onKeyDown={(e) => e.key === "Enter" && go()}
+                    style={{ cursor: "pointer" }}
+                    title="Abrir detalle de consulta"
+                  >
+                    <div className="mm-itemTop" style={{ alignItems: "flex-start" }}>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <div className="mm-itemName">{v.reason || "Consulta"}</div>
+                        <div style={{ fontSize: 13, opacity: 0.85 }}>{formatVisitDate(v.visit_date)}</div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <div className="mm-chip">{v.cie10_code ? v.cie10_code : "CIE10"}</div>
+
+                        {/* Ver */}
+                        <button
+                          type="button"
+                          className="mm-btn mm-btn--ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            go();
+                          }}
+                        >
+                          Ver
+                        </button>
+
+                        {/* Eliminar (no debe abrir la consulta) */}
+                        <button
+                          type="button"
+                          className="mm-btn mm-btn--ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteVisit(v.id);
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mm-itemMeta">
+                      <div>
+                        <b>Diagnóstico:</b> {v.cie10_name || "-"}
+                      </div>
+                      <div>
+                        <b>Notas:</b> {v.notes || "-"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
       </div>
