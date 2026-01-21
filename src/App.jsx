@@ -8,6 +8,8 @@ import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Patients from "./pages/Patients.jsx";
 import PatientDetail from "./pages/PatientDetail.jsx";
+import Billing from "./pages/Billing.jsx";
+
 
 import Agenda from "./pages/Agenda.jsx";
 
@@ -93,7 +95,10 @@ export default function App() {
         <NavLink className="mm-nav" to="/agenda">
           Agenda
         </NavLink>
-        
+        <NavLink className="mm-nav" to="/billing">
+  Facturas
+</NavLink>
+
       </div>
 
       {/* Pages */}
@@ -106,6 +111,7 @@ export default function App() {
         <Route path="/visits/:id/prescription" element={<PrescriptionDetail />} />
 
         <Route path="/agenda" element={<Agenda />} />
+<Route path="/billing" element={<Billing />} />
 
         {/* fallback */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
