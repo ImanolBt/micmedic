@@ -3,11 +3,79 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import VisitForm from "../components/VisitForm";
 
-function formatVisitDate(dt) {
-  if (!dt) return "-";
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString();
+function calcAgeFromBirthdate(birthdate) {
+  if (!birthdate) return null;
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  return age >= 0 ? age : null;
+}
+
+function fmtNum(n, digits = 1) {
+  if (n === null || n === undefined || n === "") return null;
+  const x = Number(n);
+  if (!Number.isFinite(x)) return null;
+  return x.toFixed(digits);
+}
+
+function classifyVitals(v) {
+  // devuelve: { level: "ok"|"warn"|"bad", label: "🟢 Normal" ... }
+  // Nivel se calcula por el "peor" parámetro disponible.
+  let level = "ok";
+
+  const setLevel = (next) => {
+    const rank = { ok: 0, warn: 1, bad: 2 };
+    if (rank[next] > rank[level]) level = next;
+  };
+
+  const bpSys = Number(v.bp_sys);
+  const bpDia = Number(v.bp_dia);
+  if (Number.isFinite(bpSys) && Number.isFinite(bpDia)) {
+    if (bpSys >= 140 || bpDia >= 90) setLevel("bad");
+    else if (bpSys >= 130 || bpDia >= 85) setLevel("warn");
+  }
+
+  const hr = Number(v.hr);
+  if (Number.isFinite(hr)) {
+    if (hr > 120 || hr < 50) setLevel("warn");
+  }
+
+  const spo2 = Number(v.spo2);
+  if (Number.isFinite(spo2)) {
+    if (spo2 < 92) setLevel("bad");
+    else if (spo2 < 95) setLevel("warn");
+  }
+
+  const temp = Number(v.temp_c);
+  if (Number.isFinite(temp)) {
+    if (temp >= 38) setLevel("bad");
+    else if (temp >= 37.5) setLevel("warn");
+  }
+
+  const map = {
+    ok: { emoji: "🟢", text: "Normal" },
+    warn: { emoji: "🟡", text: "Atención" },
+    bad: { emoji: "🔴", text: "Alerta" },
+  };
+
+  return { level, ...map[level] };
+}
+
+function vitalsSummary(v) {
+  const parts = [];
+  if (v.bp_sys && v.bp_dia) parts.push(`PA ${v.bp_sys}/${v.bp_dia}`);
+  if (v.hr) parts.push(`FC ${v.hr}`);
+  if (v.spo2) parts.push(`SpO₂ ${v.spo2}%`);
+  if (v.temp_c !== null && v.temp_c !== undefined && v.temp_c !== "") parts.push(`T° ${fmtNum(v.temp_c, 1)}°C`);
+  if (v.weight_kg !== null && v.weight_kg !== undefined && v.weight_kg !== "") parts.push(`Peso ${fmtNum(v.weight_kg, 1)}kg`);
+  if (v.height_cm !== null && v.height_cm !== undefined && v.height_cm !== "") parts.push(`Talla ${fmtNum(v.height_cm, 0)}cm`);
+  if (v.bmi !== null && v.bmi !== undefined && v.bmi !== "") parts.push(`IMC ${fmtNum(v.bmi, 1)}`);
+  if (v.pediatric_percentile) parts.push(`OMS ${v.pediatric_percentile}`);
+  return parts.length ? parts.join(" · ") : "Sin signos vitales registrados";
 }
 
 export default function PatientDetail() {
@@ -16,7 +84,7 @@ export default function PatientDetail() {
 
   const patientId = useMemo(() => {
     const n = Number(id);
-    return Number.isFinite(n) ? n : null; // patients.id es bigint
+    return Number.isFinite(n) ? n : null; // patient.id bigint
   }, [id]);
 
   const [loading, setLoading] = useState(true);
@@ -43,7 +111,9 @@ export default function PatientDetail() {
 
     const v = await supabase
       .from("medical_visits")
-      .select("id, visit_date, reason, cie10_code, cie10_name, notes, created_at")
+      .select(
+        "id, visit_date, reason, cie10_code, cie10_name, notes, created_at, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
+      )
       .eq("patient_id", patientId)
       .order("visit_date", { ascending: false });
 
@@ -80,9 +150,10 @@ export default function PatientDetail() {
   if (loading) return <div className="mm-empty">Cargando ficha...</div>;
   if (!patient) return <div className="mm-empty">Paciente no encontrado.</div>;
 
+  const age = calcAgeFromBirthdate(patient.birthdate);
+
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
-      {/* Header paciente */}
       <div className="mm-card">
         <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
           <div>
@@ -100,28 +171,14 @@ export default function PatientDetail() {
         </div>
 
         <div className="mm-itemMeta" style={{ padding: 14 }}>
-          <div>
-            <b>Sexo:</b> {patient.sex === "M" ? "Masculino" : "Femenino"}
-          </div>
-          <div>
-            <b>Nacimiento:</b> {patient.birthdate || "-"}
-          </div>
-          <div>
-            <b>Edad:</b> {patient.age ?? "-"}
-          </div>
-          <div>
-            <b>Alergias:</b>{" "}
-            {Array.isArray(patient.allergies)
-              ? patient.allergies.join(", ")
-              : patient.allergies || "-"}
-          </div>
-          <div>
-            <b>Notas:</b> {patient.notes || "-"}
-          </div>
+          <div><b>Sexo:</b> {patient.sex === "M" ? "Masculino" : "Femenino"}</div>
+          <div><b>Nacimiento:</b> {patient.birthdate || "-"}</div>
+          <div><b>Edad:</b> {age !== null ? `${age} años` : "-"}</div>
+          <div><b>Alergias:</b> {Array.isArray(patient.allergies) ? patient.allergies.join(", ") : (patient.allergies || "-")}</div>
+          <div><b>Notas:</b> {patient.notes || "-"}</div>
         </div>
       </div>
 
-      {/* Grid: Nueva consulta + Historial */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <VisitForm patientId={patientId} onCreated={loadAll} />
 
@@ -140,7 +197,7 @@ export default function PatientDetail() {
 
             {!loadingVisits &&
               visits.map((v) => {
-                const go = () => nav(`/visits/${v.id}`);
+                const status = classifyVitals(v);
 
                 return (
                   <div
@@ -148,37 +205,33 @@ export default function PatientDetail() {
                     className="mm-item"
                     role="button"
                     tabIndex={0}
-                    onClick={go}
-                    onKeyDown={(e) => e.key === "Enter" && go()}
+                    onClick={() => nav(`/visits/${v.id}`)}
+                    onKeyDown={(e) => e.key === "Enter" && nav(`/visits/${v.id}`)}
                     style={{ cursor: "pointer" }}
-                    title="Abrir detalle de consulta"
+                    title="Abrir consulta"
                   >
                     <div className="mm-itemTop" style={{ alignItems: "flex-start" }}>
                       <div style={{ display: "grid", gap: 2 }}>
-                        <div className="mm-itemName">{v.reason || "Consulta"}</div>
-                        <div style={{ fontSize: 13, opacity: 0.85 }}>{formatVisitDate(v.visit_date)}</div>
+                        <div className="mm-itemName">{v.reason}</div>
+                        <div style={{ fontSize: 13, opacity: 0.85 }}>
+                          {new Date(v.visit_date).toLocaleString("es-EC")}
+                        </div>
                       </div>
 
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <div className="mm-chip">{v.cie10_code ? v.cie10_code : "CIE10"}</div>
+                        <div className="mm-chip">
+                          {v.cie10_code ? `${v.cie10_code}` : "CIE10"}
+                        </div>
 
-                        {/* Ver */}
+                        <div className="mm-chip" title="Estado de signos vitales">
+                          {status.emoji} {status.text}
+                        </div>
+
                         <button
                           type="button"
                           className="mm-btn mm-btn--ghost"
                           onClick={(e) => {
-                            e.stopPropagation();
-                            go();
-                          }}
-                        >
-                          Ver
-                        </button>
-
-                        {/* Eliminar (no debe abrir la consulta) */}
-                        <button
-                          type="button"
-                          className="mm-btn mm-btn--ghost"
-                          onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             deleteVisit(v.id);
                           }}
@@ -189,12 +242,9 @@ export default function PatientDetail() {
                     </div>
 
                     <div className="mm-itemMeta">
-                      <div>
-                        <b>Diagnóstico:</b> {v.cie10_name || "-"}
-                      </div>
-                      <div>
-                        <b>Notas:</b> {v.notes || "-"}
-                      </div>
+                      <div><b>Diagnóstico:</b> {v.cie10_name || "-"}</div>
+                      <div><b>Signos vitales:</b> {vitalsSummary(v)}</div>
+                      <div><b>Notas:</b> {v.notes || "-"}</div>
                     </div>
                   </div>
                 );
