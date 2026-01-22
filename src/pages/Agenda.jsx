@@ -47,17 +47,50 @@ function formatLocalDateTime(iso) {
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
-function digitsOnlyPhone(phone) {
-  if (!phone) return "";
-  return String(phone).replace(/[^\d]/g, "");
+function digitsOnly(phone) {
+  return String(phone || "").replace(/\D/g, "");
+}
+
+/**
+ * Convierte a formato WA (E.164 sin "+")
+ * Ecuador:
+ * - 09xxxxxxxx => 5939xxxxxxxx
+ * - 9xxxxxxxx  => 5939xxxxxxxx
+ * - 5939xxxxxx => se queda
+ */
+function toE164Ecuador(phoneRaw) {
+  const digits = digitsOnly(phoneRaw);
+
+  if (!digits) return "";
+
+  // ya viene con 593
+  if (digits.startsWith("593")) return digits;
+
+  // viene con 0 al inicio (09...)
+  if (digits.startsWith("0") && digits.length >= 10) {
+    return "593" + digits.slice(1);
+  }
+
+  // viene sin 0 (9...)
+  if (digits.startsWith("9") && digits.length >= 9) {
+    return "593" + digits;
+  }
+
+  // fallback: devolver lo que haya (si es otro país, por ejemplo)
+  return digits;
 }
 
 function openWhatsApp({ phone, text }) {
   const msg = encodeURIComponent(text || "");
-  const digits = digitsOnlyPhone(phone);
-  const url = digits
-    ? `https://wa.me/${digits}?text=${msg}`
-    : `https://wa.me/?text=${msg}`;
+  const e164 = toE164Ecuador(phone);
+
+  // validación mínima: Ecuador suele quedar 12 dígitos (593 + 9 + 8 dígitos = 12)
+  if (!e164 || e164.length < 11) {
+    alert("Número inválido. Guarda el teléfono como 09xxxxxxxx o +5939xxxxxxxx.");
+    return;
+  }
+
+  const url = `https://wa.me/${e164}?text=${msg}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -80,11 +113,24 @@ function endOfWeekLocal(dateStr) {
 }
 
 function buildCitaText({ patientName, whenLocal, reason }) {
-  return `MicMEDIC - Cita agendada\n\nPaciente: ${patientName}\nFecha/Hora: ${whenLocal}\nMotivo: ${reason}\n\nPor favor confirmar asistencia.`;
+  return `MicMEDIC - Cita agendada
+
+Paciente: ${patientName}
+Fecha/Hora: ${whenLocal}
+Motivo: ${reason}
+
+Por favor confirmar asistencia.`;
 }
 
 function buildReminderText({ patientName, whenLocal, reason }) {
-  return `MicMEDIC - Recordatorio\n\nPaciente: ${patientName}\nRecuerda tu cita:\nFecha/Hora: ${whenLocal}\nMotivo: ${reason}\n\nGracias.`;
+  return `MicMEDIC - Recordatorio
+
+Paciente: ${patientName}
+Recuerda tu cita:
+Fecha/Hora: ${whenLocal}
+Motivo: ${reason}
+
+Gracias.`;
 }
 
 /** ===== Page ===== */
@@ -235,14 +281,16 @@ export default function Agenda() {
 
       await loadAppointments();
 
-      // Abre WhatsApp con mensaje listo (si hay teléfono)
-      if (selectedPatient) {
+      // ✅ WhatsApp: chat + mensaje
+      if (selectedPatient?.phone) {
         const msg = buildCitaText({
           patientName: selectedPatient.name,
           whenLocal: formatLocalDateTime(startIso),
           reason: payload.reason,
         });
         openWhatsApp({ phone: selectedPatient.phone, text: msg });
+      } else {
+        alert("Cita guardada. El paciente no tiene teléfono registrado.");
       }
     } catch (e2) {
       console.error(e2);
@@ -324,6 +372,8 @@ export default function Agenda() {
 
   function sendCitaWhatsApp(item) {
     const p = item?.patients || {};
+    if (!p.phone) return alert("Este paciente no tiene teléfono registrado.");
+
     const msg = buildCitaText({
       patientName: p.name || "Paciente",
       whenLocal: formatLocalDateTime(item.start_at),
@@ -334,6 +384,8 @@ export default function Agenda() {
 
   function sendReminderWhatsApp(item) {
     const p = item?.patients || {};
+    if (!p.phone) return alert("Este paciente no tiene teléfono registrado.");
+
     const msg = buildReminderText({
       patientName: p.name || "Paciente",
       whenLocal: formatLocalDateTime(item.start_at),
@@ -468,7 +520,7 @@ export default function Agenda() {
             </button>
 
             <div className="mm-hint">
-              Al agendar, se abre WhatsApp con el mensaje listo (si el paciente tiene teléfono).
+              Al agendar, se abre WhatsApp con el chat + mensaje listo (si el paciente tiene teléfono válido).
             </div>
           </form>
         </section>

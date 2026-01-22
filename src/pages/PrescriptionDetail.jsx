@@ -169,15 +169,18 @@ export default function PrescriptionDetail() {
   }
 
   function printPDF() {
-    const node = printRef.current;
-    if (!node) return;
+  const node = printRef.current;
+  if (!node) return;
 
-    const html = node.innerHTML;
-    const w = window.open("", "_blank", "width=900,height=1200");
-    if (!w) return;
+  const LOGO_TOP = "/logo-top.png";          // public/logo-top.png
+  const LOGO_WM = "/logo-watermark.png";     // public/logo-watermark.png
 
-    w.document.open();
-    w.document.write(`
+  const html = node.innerHTML;
+  const w = window.open("", "_blank", "width=900,height=1200");
+  if (!w) return;
+
+  w.document.open();
+  w.document.write(`
 <!doctype html>
 <html>
 <head>
@@ -185,7 +188,35 @@ export default function PrescriptionDetail() {
   <title>Receta</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-    .paper { width: 820px; margin: 0 auto; }
+    .paper { width: 820px; margin: 0 auto; position: relative; }
+
+    /* Marca de agua */
+    .watermark {
+      position: absolute;
+      inset: 0;
+      background-image: url("${LOGO_WM}");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 560px auto;
+      opacity: 0.35; /* ajusta 0.05 a 0.12 */
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Contenido por encima */
+    .content { position: relative; z-index: 1; }
+
+    /* Header con logo */
+    .headerRow {
+      display:flex;
+      justify-content: space-between;
+      align-items:flex-start;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    .logoTop { height: 150px; object-fit: contain; }
+
+    /* Tus estilos originales */
     .top { display:flex; justify-content: space-between; gap: 12px; align-items:flex-start; }
     .brand { font-weight: 900; font-size: 28px; }
     .muted { font-size: 12px; color:#333; line-height: 1.3; }
@@ -197,18 +228,39 @@ export default function PrescriptionDetail() {
     td { font-size: 12px; white-space: pre-wrap; }
     .footer { margin-top: 18px; font-size: 12px; }
     .line { margin-top: 18px; border-top: 1px solid #ddd; padding-top: 10px; text-align:center; }
+
+    /* Imprimir fondos */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
     @media print { body { padding: 0; } .paper { width: auto; margin: 0; } }
   </style>
 </head>
 <body>
-  <div class="paper">${html}</div>
+  <div class="paper">
+    <div class="watermark"></div>
+
+    <div class="content">
+      <div class="headerRow">
+        <img class="logoTop" src="${LOGO_TOP}" alt="Logo" />
+        <div class="muted" style="text-align:right;">
+          <div style="font-weight:900;">${doctor.fullName}</div>
+          <div>${doctor.specialty}</div>
+          <div>CEDULA: ${doctor.cedula}</div>
+          <div>REG. MEDICO: ${doctor.regMedico}</div>
+        </div>
+      </div>
+
+      ${html}
+    </div>
+  </div>
 </body>
 </html>
-    `);
-    w.document.close();
-    w.focus();
-    w.print();
-  }
+  `);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando receta...</div>;
@@ -323,15 +375,7 @@ export default function PrescriptionDetail() {
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
               <div className="top">
-                <div>
-                  <div className="brand">{doctor.clinic}</div>
-                  <div className="muted">
-                    <div style={{ fontWeight: 900 }}>{doctor.fullName}</div>
-                    <div>{doctor.specialty}</div>
-                    <div>CEDULA: {doctor.cedula}</div>
-                    <div>REG. MEDICO: {doctor.regMedico}</div>
-                  </div>
-                </div>
+                
 
                 <div className="muted" style={{ textAlign: "right" }}>
                   <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>

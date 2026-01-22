@@ -345,15 +345,18 @@ export default function VisitDetail() {
   }
 
   function printPDF() {
-    const node = printRef.current;
-    if (!node) return;
+  const node = printRef.current;
+  if (!node) return;
 
-    const html = node.innerHTML;
-    const w = window.open("", "_blank", "width=900,height=1200");
-    if (!w) return;
+  const LOGO_TOP = "/logo-top.png";          // public/logo-top.png
+  const LOGO_WM = "/logo-watermark.png";     // public/logo-watermark.png
 
-    w.document.open();
-    w.document.write(`
+  const html = node.innerHTML;
+  const w = window.open("", "_blank", "width=900,height=1200");
+  if (!w) return;
+
+  w.document.open();
+  w.document.write(`
 <!doctype html>
 <html>
 <head>
@@ -361,15 +364,47 @@ export default function VisitDetail() {
   <title>Certificado</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-    .paper { width: 800px; margin: 0 auto; }
-    .head { display:flex; justify-content: space-between; align-items:flex-start; gap: 16px; }
-    .brand { font-weight: 900; font-size: 34px; letter-spacing: .5px; }
+    .paper { width: 800px; margin: 0 auto; position: relative; }
+
+    /* Marca de agua */
+    .watermark {
+      position: absolute;
+      inset: 0;
+      background-image: url("${LOGO_WM}");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 560px auto;  /* tamaño del logo de fondo */
+      opacity: 0.35;                /* 0.05 a 0.12 recomendado */
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Contenido sobre la marca de agua */
+    .content { position: relative; z-index: 1; }
+
+    /* Header: logo arriba + datos */
+    .headerRow {
+      display:flex;
+      justify-content: space-between;
+      align-items:flex-start;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .logoTop {
+      height: 150px;       /* tamaño del logo superior */
+      object-fit: contain;
+    }
+
     .muted { color:#333; font-size: 12px; line-height: 1.25; }
-    .title { text-align:center; font-weight: 900; margin: 18px 0 16px; }
+    .title { text-align:center; font-weight: 900; margin: 18px 0 16px; letter-spacing: .5px; }
     .body { font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
     .sign { margin-top: 22px; text-align: center; }
-    .foot { margin-top: 10px; text-align:center; font-size: 12px; }
     .line { margin: 18px 0; border-top: 1px solid #ddd; }
+
+    /* Esto ayuda a imprimir fondos en varios navegadores */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
     @media print {
       body { padding: 0; }
       .paper { width: auto; margin: 0; }
@@ -377,14 +412,26 @@ export default function VisitDetail() {
   </style>
 </head>
 <body>
-  <div class="paper">${html}</div>
+  <div class="paper">
+    <div class="watermark"></div>
+
+    <div class="content">
+      <div class="headerRow">
+        <img class="logoTop" src="${LOGO_TOP}" alt="Logo" />
+        
+      </div>
+
+      ${html}
+    </div>
+  </div>
 </body>
 </html>
-    `);
-    w.document.close();
-    w.focus();
-    w.print();
-  }
+  `);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando consulta...</div>;
@@ -616,7 +663,6 @@ export default function VisitDetail() {
             <div ref={printRef}>
               <div className="head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
                 <div>
-                  <div style={{ fontWeight: 900, fontSize: 34, letterSpacing: ".5px" }}>MicMEDIC</div>
                 </div>
                 <div style={{ color: "#333", fontSize: 12, lineHeight: 1.25, textAlign: "right" }}>
                   <div style={{ fontWeight: 900 }}>{doctor.headerLine1}</div>
