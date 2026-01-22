@@ -66,7 +66,6 @@ export default function PatientForm({ onCreate, disabled }) {
     e.preventDefault();
     if (!canSubmit || disabled) return;
 
-    // RECOMENDADO: guardamos birthdate (si existe) y NO guardamos age
     const payload = {
       name: name.trim(),
       sex,
@@ -144,20 +143,38 @@ export default function PatientForm({ onCreate, disabled }) {
         disabled={disabled}
       />
 
-      <input
+      {/* ✅ Alergias en multilínea */}
+      <textarea
         className="mm-input"
-        placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
+        placeholder={`Alergias (separa con comas).
+Ej:
+Penicilina, Mariscos, Ibuprofeno`}
         value={allergiesCSV}
         onChange={(e) => setAllergiesCSV(e.target.value)}
         disabled={disabled}
+        rows={4}
+        style={{
+          resize: "vertical",
+          paddingTop: 12,
+          lineHeight: 1.4,
+          whiteSpace: "pre-wrap",
+        }}
       />
 
-      <input
+      {/* ✅ Notas también en multilínea (se ve más pro) */}
+      <textarea
         className="mm-input"
         placeholder="Notas (opcional)"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         disabled={disabled}
+        rows={3}
+        style={{
+          resize: "vertical",
+          paddingTop: 12,
+          lineHeight: 1.4,
+          whiteSpace: "pre-wrap",
+        }}
       />
 
       <button className="mm-btn" disabled={!canSubmit || disabled}>

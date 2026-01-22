@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import VisitForm from "../components/VisitForm";
+import PatientEditModal from "../components/PatientEditModal";
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
@@ -23,10 +24,7 @@ function fmtNum(n, digits = 1) {
 }
 
 function classifyVitals(v) {
-  // devuelve: { level: "ok"|"warn"|"bad", label: "🟢 Normal" ... }
-  // Nivel se calcula por el "peor" parámetro disponible.
   let level = "ok";
-
   const setLevel = (next) => {
     const rank = { ok: 0, warn: 1, bad: 2 };
     if (rank[next] > rank[level]) level = next;
@@ -70,21 +68,25 @@ function vitalsSummary(v) {
   if (v.bp_sys && v.bp_dia) parts.push(`PA ${v.bp_sys}/${v.bp_dia}`);
   if (v.hr) parts.push(`FC ${v.hr}`);
   if (v.spo2) parts.push(`SpO₂ ${v.spo2}%`);
-  if (v.temp_c !== null && v.temp_c !== undefined && v.temp_c !== "") parts.push(`T° ${fmtNum(v.temp_c, 1)}°C`);
-  if (v.weight_kg !== null && v.weight_kg !== undefined && v.weight_kg !== "") parts.push(`Peso ${fmtNum(v.weight_kg, 1)}kg`);
-  if (v.height_cm !== null && v.height_cm !== undefined && v.height_cm !== "") parts.push(`Talla ${fmtNum(v.height_cm, 0)}cm`);
-  if (v.bmi !== null && v.bmi !== undefined && v.bmi !== "") parts.push(`IMC ${fmtNum(v.bmi, 1)}`);
+  if (v.temp_c !== null && v.temp_c !== undefined && v.temp_c !== "")
+    parts.push(`T° ${fmtNum(v.temp_c, 1)}°C`);
+  if (v.weight_kg !== null && v.weight_kg !== undefined && v.weight_kg !== "")
+    parts.push(`Peso ${fmtNum(v.weight_kg, 1)}kg`);
+  if (v.height_cm !== null && v.height_cm !== undefined && v.height_cm !== "")
+    parts.push(`Talla ${fmtNum(v.height_cm, 0)}cm`);
+  if (v.bmi !== null && v.bmi !== undefined && v.bmi !== "")
+    parts.push(`IMC ${fmtNum(v.bmi, 1)}`);
   if (v.pediatric_percentile) parts.push(`OMS ${v.pediatric_percentile}`);
   return parts.length ? parts.join(" · ") : "Sin signos vitales registrados";
 }
 
 export default function PatientDetail() {
-  const { id } = useParams(); // /patients/:id
+  const { id } = useParams();
   const nav = useNavigate();
 
   const patientId = useMemo(() => {
     const n = Number(id);
-    return Number.isFinite(n) ? n : null; // patient.id bigint
+    return Number.isFinite(n) ? n : null;
   }, [id]);
 
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,16 @@ export default function PatientDetail() {
 
   const [visits, setVisits] = useState([]);
   const [loadingVisits, setLoadingVisits] = useState(true);
+
+  // ===== Modal editar paciente =====
+  const [editOpen, setEditOpen] = useState(false);
+
+  function openEdit() {
+    setEditOpen(true);
+  }
+  function closeEdit() {
+    setEditOpen(false);
+  }
 
   async function loadAll() {
     if (!patientId) return;
@@ -163,9 +175,13 @@ export default function PatientDetail() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="mm-btn mm-btn--ghost" type="button" onClick={() => nav("/patients")}>
               Volver
+            </button>
+
+            <button className="mm-btn" type="button" onClick={openEdit}>
+              Editar paciente
             </button>
           </div>
         </div>
@@ -174,7 +190,10 @@ export default function PatientDetail() {
           <div><b>Sexo:</b> {patient.sex === "M" ? "Masculino" : "Femenino"}</div>
           <div><b>Nacimiento:</b> {patient.birthdate || "-"}</div>
           <div><b>Edad:</b> {age !== null ? `${age} años` : "-"}</div>
-          <div><b>Alergias:</b> {Array.isArray(patient.allergies) ? patient.allergies.join(", ") : (patient.allergies || "-")}</div>
+          <div>
+            <b>Alergias:</b>{" "}
+            {Array.isArray(patient.allergies) ? patient.allergies.join(", ") : patient.allergies || "-"}
+          </div>
           <div><b>Notas:</b> {patient.notes || "-"}</div>
         </div>
       </div>
@@ -218,10 +237,8 @@ export default function PatientDetail() {
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <div className="mm-chip">
-                          {v.cie10_code ? `${v.cie10_code}` : "CIE10"}
-                        </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <div className="mm-chip">{v.cie10_code ? `${v.cie10_code}` : "CIE10"}</div>
 
                         <div className="mm-chip" title="Estado de signos vitales">
                           {status.emoji} {status.text}
@@ -252,6 +269,14 @@ export default function PatientDetail() {
           </div>
         </div>
       </div>
+
+      {/* ===== Modal editar paciente ===== */}
+      <PatientEditModal
+        open={editOpen}
+        patient={patient}
+        onClose={closeEdit}
+        onSaved={loadAll}
+      />
     </div>
   );
 }
