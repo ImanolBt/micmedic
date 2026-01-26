@@ -8,7 +8,7 @@ import { supabase } from "../lib/supabase";
  * Tablas:
  * - medical_visits (incluye signos vitales)
  * - patients
- * - certificates
+ * - certificates (rest_from, rest_to)
  */
 
 function fmtDateLong(dateISO) {
@@ -23,6 +23,31 @@ function fmtDateShort(dateISO) {
 function toNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function calcisoDateOnly(dateISO) {
+  // Devuelve YYYY-MM-DD (para inputs type="date")
+  if (!dateISO) return "";
+  const d = new Date(dateISO);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function toLocalDatetimeValue(dateISO) {
+  // Para input type="datetime-local"
+  if (!dateISO) return "";
+  const d = new Date(dateISO);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalDatetimeValue(v) {
+  // v: "YYYY-MM-DDTHH:mm" -> ISO
+  if (!v) return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function calcAge(birthdate) {
@@ -119,14 +144,14 @@ export default function VisitDetail() {
   const [patient, setPatient] = useState(null);
 
   // ===== EDITAR CONSULTA =====
-  const [editVisitOpen, setEditVisitOpen] = useState(false);
+  const [editVisit, setEditVisit] = useState(false);
   const [savingVisit, setSavingVisit] = useState(false);
 
-  const [editVisitDate, setEditVisitDate] = useState(""); // datetime-local
-  const [editReason, setEditReason] = useState("");
-  const [editCie10Code, setEditCie10Code] = useState("");
-  const [editCie10Name, setEditCie10Name] = useState("");
-  const [editVisitNotes, setEditVisitNotes] = useState("");
+  const [visitDateEdit, setVisitDateEdit] = useState(""); // datetime-local
+  const [reasonEdit, setReasonEdit] = useState("");
+  const [cie10CodeEdit, setCie10CodeEdit] = useState("");
+  const [cie10NameEdit, setCie10NameEdit] = useState("");
+  const [visitNotesEdit, setVisitNotesEdit] = useState("");
 
   // ===== Signos vitales (inputs) =====
   const [bpSys, setBpSys] = useState("");
@@ -144,7 +169,10 @@ export default function VisitDetail() {
   const [certId, setCertId] = useState(null);
   const [certDate, setCertDate] = useState(() => new Date().toISOString());
 
-  const [daysRest, setDaysRest] = useState(0);
+  // NUEVO: rango de reposo
+  const [restFrom, setRestFrom] = useState(""); // YYYY-MM-DD
+  const [restTo, setRestTo] = useState("");     // YYYY-MM-DD
+
   const [entity, setEntity] = useState("");
   const [position, setPosition] = useState("");
   const [address, setAddress] = useState("");
@@ -161,18 +189,27 @@ export default function VisitDetail() {
 
   // Datos del médico
   const doctor = {
-    fullName: "MED. ROMO PROCEL DANIELA JACKELINE",
+    fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
     specialty: "MÉDICO GENERAL",
     cedula: "050333534-1",
     regMedico: "0503335341 - 1027 - 2023 - 2599595",
     phone: "0979344305",
     email: "danitas0z@hotmail.com",
     address: "Cotopaxi - Salcedo Barrio La Tebaida (Calle Laguna Quilota y pasaje sin nombre)",
-    headerLine1: "Med. Daniela Romo",
+    headerLine1: "Esp. Daniela Romo",
     headerLine2: "Especialista en Medicina Ocupacional",
     headerLine3: "Msc. en Prevención de Riesgos Laborales",
     headerLine4: "MEDICINA GENERAL",
   };
+
+  const daysRestComputed = useMemo(() => {
+    if (!restFrom || !restTo) return 0;
+    const a = new Date(restFrom);
+    const b = new Date(restTo);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+    const diff = Math.floor((b.getTime() - a.getTime()) / 86400000);
+    return diff >= 0 ? diff + 1 : 0; // incluye ambos días
+  }, [restFrom, restTo]);
 
   async function loadAll() {
     if (!visitId) return;
@@ -206,6 +243,13 @@ export default function VisitDetail() {
     setVisit(v.data);
     setPatient(p.data);
 
+    // ===== cargar inputs editar consulta =====
+    setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
+    setReasonEdit(v.data.reason ?? "");
+    setCie10CodeEdit(v.data.cie10_code ?? "");
+    setCie10NameEdit(v.data.cie10_name ?? "");
+    setVisitNotesEdit(v.data.notes ?? "");
+
     // cargar inputs de signos vitales
     setBpSys(v.data.bp_sys ?? "");
     setBpDia(v.data.bp_dia ?? "");
@@ -219,7 +263,7 @@ export default function VisitDetail() {
     // 3) Certificate (si existe)
     const c = await supabase
       .from("certificates")
-      .select("id, date, days_rest, entity, position, address, email, include_notes, notes, title, body, visit_id, patient_id")
+      .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, include_notes, notes, title, body, visit_id, patient_id")
       .eq("visit_id", visitId)
       .maybeSingle();
 
@@ -228,7 +272,10 @@ export default function VisitDetail() {
     } else if (c.data) {
       setCertId(c.data.id);
       setCertDate(c.data.date || new Date().toISOString());
-      setDaysRest(c.data.days_rest ?? 0);
+
+      setRestFrom(c.data.rest_from ? String(c.data.rest_from) : "");
+      setRestTo(c.data.rest_to ? String(c.data.rest_to) : "");
+
       setEntity(c.data.entity ?? "");
       setPosition(c.data.position ?? "");
       setAddress(c.data.address ?? "");
@@ -238,7 +285,12 @@ export default function VisitDetail() {
     } else {
       setCertId(null);
       setCertDate(v.data.visit_date || new Date().toISOString());
-      setDaysRest(0);
+
+      // por defecto: reposo desde la fecha de visita (solo fecha)
+      const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
+      setRestFrom(visitDay);
+      setRestTo("");
+
       setEntity("");
       setPosition("");
       setAddress("");
@@ -255,55 +307,51 @@ export default function VisitDetail() {
     // eslint-disable-next-line
   }, [visitId]);
 
-  // ===== EDITAR CONSULTA: abrir modal =====
-  function openEditVisit() {
-    if (!visit) return;
-
-    // ISO -> datetime-local (sin offset)
-    const d = new Date(visit.visit_date);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-    setEditVisitDate(local.toISOString().slice(0, 16));
-
-    setEditReason(visit.reason || "");
-    setEditCie10Code(visit.cie10_code || "");
-    setEditCie10Name(visit.cie10_name || "");
-    setEditVisitNotes(visit.notes || "");
-
-    setEditVisitOpen(true);
-  }
-
-  // ===== EDITAR CONSULTA: guardar =====
-  async function saveVisitEdit() {
+  async function saveVisitEdits() {
     if (!visit) return;
     if (savingVisit) return;
 
-    if (editReason.trim().length < 3) {
-      alert("Motivo muy corto.");
+    const nextVisitISO = fromLocalDatetimeValue(visitDateEdit);
+    if (!nextVisitISO) {
+      alert("Fecha de consulta inválida.");
+      return;
+    }
+    if (!reasonEdit.trim()) {
+      alert("El motivo no puede quedar vacío.");
       return;
     }
 
-    setSavingVisit(true);
-
     const payload = {
-      visit_date: editVisitDate ? new Date(editVisitDate).toISOString() : visit.visit_date,
-      reason: editReason.trim(),
-      cie10_code: editCie10Code.trim() || null,
-      cie10_name: editCie10Name.trim() || null,
-      notes: editVisitNotes.trim() || null,
+      visit_date: nextVisitISO,
+      reason: reasonEdit.trim(),
+      cie10_code: cie10CodeEdit.trim() || null,
+      cie10_name: cie10NameEdit.trim() || null,
+      notes: visitNotesEdit.trim() || null,
     };
 
+    setSavingVisit(true);
     const { error } = await supabase.from("medical_visits").update(payload).eq("id", visit.id);
-
     setSavingVisit(false);
 
     if (error) {
       console.error(error);
-      alert(error.message || "No se pudo guardar la edición de la consulta");
+      alert(error.message || "No se pudo guardar cambios de la consulta");
       return;
     }
 
-    setEditVisitOpen(false);
+    alert("Consulta actualizada.");
+    setEditVisit(false);
     loadAll();
+  }
+
+  function cancelVisitEdits() {
+    if (!visit) return;
+    setVisitDateEdit(toLocalDatetimeValue(visit.visit_date));
+    setReasonEdit(visit.reason ?? "");
+    setCie10CodeEdit(visit.cie10_code ?? "");
+    setCie10NameEdit(visit.cie10_name ?? "");
+    setVisitNotesEdit(visit.notes ?? "");
+    setEditVisit(false);
   }
 
   async function saveVitals() {
@@ -344,6 +392,15 @@ export default function VisitDetail() {
   async function saveCertificate() {
     if (!visit || !patient) return;
 
+    if (!restFrom || !restTo) {
+      alert("Selecciona reposo DESDE y HASTA.");
+      return;
+    }
+    if (daysRestComputed <= 0) {
+      alert("Rango de reposo inválido. 'Hasta' debe ser igual o mayor que 'Desde'.");
+      return;
+    }
+
     const diag =
       visit.cie10_code && visit.cie10_name
         ? `${visit.cie10_name} CIE10 (${visit.cie10_code})`
@@ -352,18 +409,16 @@ export default function VisitDetail() {
     const baseBody = [
       "A quien interese,",
       "",
-      `Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula}, fue atendido por:`,
+      `Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula || "-"}, fue atendido por:`,
       "",
       `Diagnóstico: ${diag}`,
-      `Numero de historia clínica: ${patient.cedula}`,
+      `Numero de historia clínica: ${patient.cedula || "-"}`,
       `Lugar de atención: ${clinicName}`,
       `Contingencia: ${contingency}`,
       `Tipo de atención: ${attentionType}`,
       `Fecha de atención: ${fmtDateShort(visit.visit_date)}`,
       `Tratamiento: ${treatment}`,
-      `Reposo absoluto: ${Number(daysRest || 0)} DIAS, DESDE EL ${fmtDateShort(visit.visit_date)} hasta el ${fmtDateShort(
-        new Date(new Date(visit.visit_date).getTime() + Number(daysRest || 0) * 86400000).toISOString()
-      )}`,
+      `Reposo absoluto: ${daysRestComputed} DÍA(S), DESDE EL ${fmtDateShort(restFrom)} HASTA EL ${fmtDateShort(restTo)}`,
       "",
       `Entidad: ${entity || "-"}`,
       `Cargo: ${position || "-"}`,
@@ -379,7 +434,12 @@ export default function VisitDetail() {
       date: certDate ? new Date(certDate).toISOString() : new Date().toISOString(),
       title: "CERTIFICADO MÉDICO",
       body: baseBody,
-      days_rest: Number(daysRest || 0),
+
+      // guardamos ambos:
+      days_rest: Number(daysRestComputed || 0),
+      rest_from: restFrom || null,
+      rest_to: restTo || null,
+
       notes: notes || null,
       include_notes: !!includeNotes,
       entity: entity || null,
@@ -388,7 +448,11 @@ export default function VisitDetail() {
       email: email || null,
     };
 
-    const up = await supabase.from("certificates").upsert(payload, { onConflict: "visit_id" }).select("id").single();
+    const up = await supabase
+      .from("certificates")
+      .upsert(payload, { onConflict: "visit_id" })
+      .select("id")
+      .single();
 
     if (up.error) {
       console.error(up.error);
@@ -405,7 +469,7 @@ export default function VisitDetail() {
     const node = printRef.current;
     if (!node) return;
 
-    const LOGO_TOP = "/logo-top.png"; // public/logo-top.png
+    const LOGO_TOP = "/logo-top.png";      // public/logo-top.png
     const LOGO_WM = "/logo-watermark.png"; // public/logo-watermark.png
 
     const html = node.innerHTML;
@@ -423,7 +487,6 @@ export default function VisitDetail() {
     body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
     .paper { width: 800px; margin: 0 auto; position: relative; }
 
-    /* Marca de agua */
     .watermark {
       position: absolute;
       inset: 0;
@@ -451,12 +514,6 @@ export default function VisitDetail() {
       object-fit: contain;
     }
 
-    .muted { color:#333; font-size: 12px; line-height: 1.25; }
-    .title { text-align:center; font-weight: 900; margin: 18px 0 16px; letter-spacing: .5px; }
-    .body { font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
-    .sign { margin-top: 22px; text-align: center; }
-    .line { margin: 18px 0; border-top: 1px solid #ddd; }
-
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
     @media print {
@@ -479,7 +536,7 @@ export default function VisitDetail() {
   </div>
 </body>
 </html>
-  `);
+    `);
     w.document.close();
     w.focus();
     w.print();
@@ -490,7 +547,9 @@ export default function VisitDetail() {
   if (!visit || !patient) return <div className="mm-empty">No se encontró la consulta.</div>;
 
   const diagLabel =
-    visit.cie10_code && visit.cie10_name ? `${visit.cie10_name} (${visit.cie10_code})` : visit.cie10_name || visit.cie10_code || "-";
+    visit.cie10_code && visit.cie10_name
+      ? `${visit.cie10_name} (${visit.cie10_code})`
+      : visit.cie10_name || visit.cie10_code || "-";
 
   const age = calcAge(patient.birthdate) ?? patient.age ?? null;
   const isChild = age !== null ? Number(age) < 10 : false;
@@ -512,7 +571,7 @@ export default function VisitDetail() {
           <div>
             <div className="mm-cardTitle">Consulta</div>
             <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Paciente: <b>{patient.name}</b> · CI: <b>{patient.cedula}</b> · Fecha:{" "}
+              Paciente: <b>{patient.name}</b> · CI: <b>{patient.cedula || "-"}</b> · Fecha:{" "}
               <b>{new Date(visit.visit_date).toLocaleString("es-EC")}</b>
             </div>
           </div>
@@ -522,10 +581,20 @@ export default function VisitDetail() {
               {status.emoji} {status.text}
             </div>
 
-            {/* BOTÓN NUEVO: EDITAR CONSULTA */}
-            <button className="mm-btn mm-btn--ghost" type="button" onClick={openEditVisit}>
-              Editar consulta
-            </button>
+            {!editVisit ? (
+              <button className="mm-btn" type="button" onClick={() => setEditVisit(true)}>
+                Editar consulta
+              </button>
+            ) : (
+              <>
+                <button className="mm-btn" type="button" onClick={saveVisitEdits} disabled={savingVisit}>
+                  {savingVisit ? "Guardando..." : "Guardar cambios"}
+                </button>
+                <button className="mm-btn mm-btn--ghost" type="button" onClick={cancelVisitEdits} disabled={savingVisit}>
+                  Cancelar
+                </button>
+              </>
+            )}
 
             <button className="mm-btn mm-btn--ghost" type="button" onClick={() => nav(`/patients/${patient.id}`)}>
               Volver a ficha
@@ -533,16 +602,74 @@ export default function VisitDetail() {
           </div>
         </div>
 
-        <div className="mm-itemMeta" style={{ padding: 14 }}>
-          <div>
-            <b>Motivo:</b> {visit.reason || "-"}
-          </div>
-          <div>
-            <b>Diagnóstico (CIE10):</b> {diagLabel}
-          </div>
-          <div>
-            <b>Notas de consulta:</b> {visit.notes || "-"}
-          </div>
+        <div className="mm-itemMeta" style={{ padding: 14, display: "grid", gap: 10 }}>
+          {!editVisit ? (
+            <>
+              <div><b>Motivo:</b> {visit.reason || "-"}</div>
+              <div><b>Diagnóstico (CIE10):</b> {diagLabel}</div>
+              <div><b>Notas de consulta:</b> {visit.notes || "-"}</div>
+            </>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div className="mm-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Fecha y hora de consulta</div>
+                  <input
+                    className="mm-input"
+                    type="datetime-local"
+                    value={visitDateEdit}
+                    onChange={(e) => setVisitDateEdit(e.target.value)}
+                    disabled={savingVisit}
+                  />
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Motivo</div>
+                  <input
+                    className="mm-input"
+                    value={reasonEdit}
+                    onChange={(e) => setReasonEdit(e.target.value)}
+                    disabled={savingVisit}
+                  />
+                </div>
+              </div>
+
+              <div className="mm-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 (código)</div>
+                  <input
+                    className="mm-input"
+                    value={cie10CodeEdit}
+                    onChange={(e) => setCie10CodeEdit(e.target.value)}
+                    disabled={savingVisit}
+                    placeholder="Ej: J02.9"
+                  />
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 (nombre)</div>
+                  <input
+                    className="mm-input"
+                    value={cie10NameEdit}
+                    onChange={(e) => setCie10NameEdit(e.target.value)}
+                    disabled={savingVisit}
+                    placeholder="Ej: Faringitis aguda, no especificada"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>Notas de consulta</div>
+                <textarea
+                  className="mm-input"
+                  style={{ minHeight: 90, paddingTop: 10 }}
+                  value={visitNotesEdit}
+                  onChange={(e) => setVisitNotesEdit(e.target.value)}
+                  disabled={savingVisit}
+                  placeholder="Notas..."
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <b>Signos vitales:</b>{" "}
             {vitalsSummary(
@@ -641,7 +768,9 @@ export default function VisitDetail() {
                 </button>
 
                 <div className="mm-hint" style={{ margin: 0 }}>
-                  {isChild ? "Menores de 10: registra percentil OMS manual (P50, P85, etc.)." : "Desde 10+: el sistema calcula IMC automáticamente con peso y talla."}
+                  {isChild
+                    ? "Menores de 10: registra percentil OMS manual (P50, P85, etc.)."
+                    : "Desde 10+: el sistema calcula IMC automáticamente con peso y talla."}
                 </div>
               </div>
             </div>
@@ -667,8 +796,30 @@ export default function VisitDetail() {
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>Días de reposo</div>
-                  <input className="mm-input" type="number" min={0} max={30} value={daysRest} onChange={(e) => setDaysRest(e.target.value)} />
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Días de reposo (auto)</div>
+                  <input className="mm-input" value={daysRestComputed ? `${daysRestComputed} día(s)` : "-"} disabled />
+                </div>
+              </div>
+
+              <div className="mm-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Reposo desde</div>
+                  <input
+                    className="mm-input"
+                    type="date"
+                    value={restFrom}
+                    onChange={(e) => setRestFrom(e.target.value)}
+                  />
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Reposo hasta</div>
+                  <input
+                    className="mm-input"
+                    type="date"
+                    value={restTo}
+                    min={restFrom || undefined}
+                    onChange={(e) => setRestTo(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -678,7 +829,12 @@ export default function VisitDetail() {
               <input className="mm-input" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} />
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", paddingTop: 4 }}>
-                <input id="includeNotes" type="checkbox" checked={includeNotes} onChange={(e) => setIncludeNotes(e.target.checked)} />
+                <input
+                  id="includeNotes"
+                  type="checkbox"
+                  checked={includeNotes}
+                  onChange={(e) => setIncludeNotes(e.target.checked)}
+                />
                 <label htmlFor="includeNotes" style={{ fontSize: 13 }}>
                   Incluir notas adicionales en el certificado
                 </label>
@@ -708,7 +864,9 @@ export default function VisitDetail() {
                 </button>
               </div>
 
-              <div className="mm-hint">Consejo: primero guarda, luego imprime. Así queda todo persistido por consulta.</div>
+              <div className="mm-hint">
+                Consejo: primero guarda, luego imprime. Así queda todo persistido por consulta.
+              </div>
             </div>
           </div>
         </div>
@@ -723,26 +881,28 @@ export default function VisitDetail() {
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
               <div className="head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                <div></div>
+                <div />
                 <div style={{ color: "#333", fontSize: 12, lineHeight: 1.25, textAlign: "right" }}>
                   <div style={{ fontWeight: 900 }}>{doctor.headerLine1}</div>
                   <div>{doctor.headerLine2}</div>
                   <div>{doctor.headerLine3}</div>
                   <div style={{ fontWeight: 900 }}>{doctor.headerLine4}</div>
-                  <div style={{ marginTop: 6 }}>Salcedo, {fmtDateLong(certDate)}</div>
+                  <div style={{ marginTop: 6 }}>
+                    Salcedo, {fmtDateLong(certDate)}
+                  </div>
                 </div>
               </div>
 
               <div style={{ textAlign: "center", fontWeight: 900, margin: "18px 0 16px" }}>CERTIFICADO MEDICO</div>
 
               <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-                {`A quien interese,
+{`A quien interese,
 
-Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula}, fue atendido por:
+Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula || "-"}, fue atendido por:
 
 Diagnostico: ${visit.cie10_name ? visit.cie10_name : "-"} CIE10 (${visit.cie10_code ? visit.cie10_code : "-"})
 
-Numero de historia clinica: ${patient.cedula}
+Numero de historia clinica: ${patient.cedula || "-"}
 
 Lugar de atencion: ${clinicName}
 
@@ -754,7 +914,7 @@ Fecha de atencion: ${fmtDateShort(visit.visit_date)}
 
 Tratamiento: ${treatment}
 
-Reposo absoluto: ${Number(daysRest || 0)} DIAS
+Reposo absoluto: ${daysRestComputed} DÍA(S), DESDE EL ${fmtDateShort(restFrom)} HASTA EL ${fmtDateShort(restTo)}
 
 Entidad: ${entity || "-"}
 
@@ -783,82 +943,6 @@ Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesa
         </div>
       </div>
 
-      {/* MODAL EDITAR CONSULTA */}
-      {editVisitOpen && (
-        <div
-          onClick={() => setEditVisitOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.35)",
-            display: "grid",
-            placeItems: "center",
-            padding: 14,
-            zIndex: 80,
-          }}
-        >
-          <div onClick={(e) => e.stopPropagation()} className="mm-card" style={{ width: "min(820px, 100%)" }}>
-            <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-              <div className="mm-cardTitle">Editar consulta</div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="mm-btn mm-btn--ghost" type="button" onClick={() => setEditVisitOpen(false)} disabled={savingVisit}>
-                  Cancelar
-                </button>
-
-                <button className="mm-btn" type="button" onClick={saveVisitEdit} disabled={savingVisit}>
-                  {savingVisit ? "Guardando..." : "Guardar cambios"}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: 14, display: "grid", gap: 10 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>Fecha y hora</div>
-                <input className="mm-input" type="datetime-local" value={editVisitDate} onChange={(e) => setEditVisitDate(e.target.value)} />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>Motivo</div>
-                <input className="mm-input" placeholder="Motivo de consulta" value={editReason} onChange={(e) => setEditReason(e.target.value)} />
-              </div>
-
-              <div className="mm-row" style={{ gridTemplateColumns: "1fr 2fr" }}>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 Código</div>
-                  <input className="mm-input" placeholder="Ej: J06.9" value={editCie10Code} onChange={(e) => setEditCie10Code(e.target.value)} />
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 Nombre</div>
-                  <input
-                    className="mm-input"
-                    placeholder="Ej: Infección aguda de vías respiratorias superiores"
-                    value={editCie10Name}
-                    onChange={(e) => setEditCie10Name(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>Notas de consulta</div>
-                <textarea
-                  className="mm-input"
-                  style={{ minHeight: 110, paddingTop: 10 }}
-                  placeholder="Notas clínicas"
-                  value={editVisitNotes}
-                  onChange={(e) => setEditVisitNotes(e.target.value)}
-                />
-              </div>
-
-              <div className="mm-hint" style={{ margin: 0 }}>
-                Los cambios se guardan en la misma consulta y se reflejan en certificado/receta al recargar.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal guía OMS (manual) */}
       {showOmsModal && (
         <div
@@ -873,7 +957,11 @@ Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesa
             zIndex: 50,
           }}
         >
-          <div onClick={(e) => e.stopPropagation()} className="mm-card" style={{ width: "min(760px, 100%)" }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="mm-card"
+            style={{ width: "min(760px, 100%)" }}
+          >
             <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
               <div className="mm-cardTitle">Curvas OMS (guía rápida)</div>
               <button className="mm-btn mm-btn--ghost" type="button" onClick={() => setShowOmsModal(false)}>
@@ -895,7 +983,12 @@ Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesa
                 </div>
 
                 <div className="mm-itemMeta" style={{ display: "grid", gap: 10 }}>
-                  <input className="mm-input" placeholder="Ej: P50" value={pediatricPercentile} onChange={(e) => setPediatricPercentile(e.target.value)} />
+                  <input
+                    className="mm-input"
+                    placeholder="Ej: P50"
+                    value={pediatricPercentile}
+                    onChange={(e) => setPediatricPercentile(e.target.value)}
+                  />
                   <div className="mm-hint" style={{ margin: 0 }}>
                     Tip rápido: P50 = promedio, P85 = sobrepeso (según caso), P97 = muy alto. (Solo guía visual).
                   </div>

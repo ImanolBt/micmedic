@@ -28,7 +28,7 @@ export default function PatientForm({ onCreate, disabled }) {
   const [phone, setPhone] = useState("");
 
   const [birthdate, setBirthdate] = useState(""); // YYYY-MM-DD
-  const [ageManual, setAgeManual] = useState(""); // solo para referencia (NO se guarda)
+  const [ageManual, setAgeManual] = useState(""); // solo referencia
 
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
@@ -37,9 +37,8 @@ export default function PatientForm({ onCreate, disabled }) {
 
   const canSubmit = useMemo(() => {
     const hasName = name.trim().length >= 3;
-    const hasCedula = cedula.trim().length >= 8;
 
-    // Exigir que exista birthdate o una edad manual válida (para que no quede vacío)
+    // Exigir que exista birthdate o edad manual válida
     const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
 
     let ageOk = true;
@@ -48,8 +47,8 @@ export default function PatientForm({ onCreate, disabled }) {
       ageOk = Number.isFinite(n) && n >= 0 && n <= 130;
     }
 
-    return hasName && hasCedula && hasBirthOrAge && ageOk;
-  }, [name, cedula, birthdate, ageManual]);
+    return hasName && hasBirthOrAge && ageOk;
+  }, [name, birthdate, ageManual]);
 
   function reset() {
     setName("");
@@ -69,7 +68,7 @@ export default function PatientForm({ onCreate, disabled }) {
     const payload = {
       name: name.trim(),
       sex,
-      cedula: cedula.trim(),
+      cedula: cedula.trim() || null,   // ✅ ahora puede ir null
       phone: phone.trim() || null,
       birthdate: birthdate ? birthdate : null,
       allergies: toTextArray(allergiesCSV),
@@ -118,7 +117,7 @@ export default function PatientForm({ onCreate, disabled }) {
       <div className="mm-row">
         <input
           className="mm-input"
-          placeholder="Cédula"
+          placeholder="Cédula (opcional)"
           value={cedula}
           onChange={(e) => setCedula(e.target.value)}
           disabled={disabled}
@@ -143,38 +142,22 @@ export default function PatientForm({ onCreate, disabled }) {
         disabled={disabled}
       />
 
-      {/* ✅ Alergias en multilínea */}
       <textarea
         className="mm-input"
-        placeholder={`Alergias (separa con comas).
-Ej:
-Penicilina, Mariscos, Ibuprofeno`}
+        placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
         value={allergiesCSV}
         onChange={(e) => setAllergiesCSV(e.target.value)}
         disabled={disabled}
-        rows={4}
-        style={{
-          resize: "vertical",
-          paddingTop: 12,
-          lineHeight: 1.4,
-          whiteSpace: "pre-wrap",
-        }}
+        style={{ minHeight: 80, paddingTop: 10 }}
       />
 
-      {/* ✅ Notas también en multilínea (se ve más pro) */}
       <textarea
         className="mm-input"
         placeholder="Notas (opcional)"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         disabled={disabled}
-        rows={3}
-        style={{
-          resize: "vertical",
-          paddingTop: 12,
-          lineHeight: 1.4,
-          whiteSpace: "pre-wrap",
-        }}
+        style={{ minHeight: 80, paddingTop: 10 }}
       />
 
       <button className="mm-btn" disabled={!canSubmit || disabled}>
@@ -182,7 +165,7 @@ Penicilina, Mariscos, Ibuprofeno`}
       </button>
 
       <div className="mm-hint">
-        Recomendado: fecha de nacimiento. La edad se calcula sola (y no se guarda como columna).
+        La cédula es opcional. Si no se conoce, el sistema permite guardar sin ese dato.
       </div>
     </form>
   );

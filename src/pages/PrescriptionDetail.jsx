@@ -34,7 +34,7 @@ export default function PrescriptionDetail() {
   // Datos del médico (pon los reales)
   const doctor = {
     clinic: "MicMEDIC",
-    fullName: "MED. ROMO PROCEL DANIELA JACKELINE",
+    fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
     specialty: "MÉDICO GENERAL",
     cedula: "050333534-1",
     regMedico: "0503335341 - 1027 - 2023 - 2599595",
