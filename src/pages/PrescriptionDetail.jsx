@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+const CLINIC_PHONE = "0984340286";
 
 function fmtDateLong(dateISO) {
   const d = dateISO ? new Date(dateISO) : new Date();
@@ -31,7 +32,6 @@ export default function PrescriptionDetail() {
 
   const [items, setItems] = useState([]);
 
-  // Datos del médico (pon los reales)
   const doctor = {
     clinic: "MicMEDIC",
     fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
@@ -169,18 +169,27 @@ export default function PrescriptionDetail() {
   }
 
   function printPDF() {
-  const node = printRef.current;
-  if (!node) return;
+    const node = printRef.current;
+    if (!node) return;
 
-  const LOGO_TOP = "/logo-top.png";          // public/logo-top.png
-  const LOGO_WM = "/logo-watermark.png";     // public/logo-watermark.png
+    const LOGO_TOP = "/logo-top.png";
+    const LOGO_WM = "/logo-watermark.png";
 
-  const html = node.innerHTML;
-  const w = window.open("", "_blank", "width=900,height=1200");
-  if (!w) return;
+    // Obtener solo el contenido principal SIN la línea de firma
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = node.innerHTML;
+    
+    // Eliminar cualquier elemento de firma que pueda estar en el printRef
+    const signatureElements = tempDiv.querySelectorAll('[style*="border-bottom"], [class*="signature"], [class*="line"]');
+    signatureElements.forEach(el => el.remove());
+    
+    const contentWithoutSignature = tempDiv.innerHTML;
 
-  w.document.open();
-  w.document.write(`
+    const w = window.open("", "_blank", "width=900,height=1200");
+    if (!w) return;
+
+    w.document.open();
+    w.document.write(`
 <!doctype html>
 <html>
 <head>
@@ -198,7 +207,7 @@ export default function PrescriptionDetail() {
       background-repeat: no-repeat;
       background-position: center;
       background-size: 560px auto;
-      opacity: 0.35; /* ajusta 0.05 a 0.12 */
+      opacity: 0.35;
       pointer-events: none;
       z-index: 0;
     }
@@ -216,7 +225,7 @@ export default function PrescriptionDetail() {
     }
     .logoTop { height: 150px; object-fit: contain; }
 
-    /* Tus estilos originales */
+    /* Estilos originales */
     .top { display:flex; justify-content: space-between; gap: 12px; align-items:flex-start; }
     .brand { font-weight: 900; font-size: 28px; }
     .muted { font-size: 12px; color:#333; line-height: 1.3; }
@@ -227,12 +236,47 @@ export default function PrescriptionDetail() {
     th { font-size: 12px; text-align: left; }
     td { font-size: 12px; white-space: pre-wrap; }
     .footer { margin-top: 18px; font-size: 12px; }
-    .line { margin-top: 18px; border-top: 1px solid #ddd; padding-top: 10px; text-align:center; }
-
+    
+    /* ÚNICA SECCIÓN DE FIRMA */
+    .signature-section {
+      margin-top: 40px;
+      padding-top: 20px;
+      text-align: center;
+    }
+    .signature-line {
+      width: 300px;
+      margin: 0 auto 15px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 5px;
+    }
+    .doctor-name {
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+    .doctor-details {
+      font-size: 11px;
+      color: #555;
+      line-height: 1.3;
+      margin-bottom: 3px;
+    }
+    .doctor-contact {
+      font-size: 11px;
+      color: #333;
+      line-height: 1.3;
+    }
+    
     /* Imprimir fondos */
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-    @media print { body { padding: 0; } .paper { width: auto; margin: 0; } }
+    @media print { 
+      body { padding: 0; } 
+      .paper { width: auto; margin: 0; }
+      .signature-section {
+        margin-top: 50px;
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
@@ -250,17 +294,31 @@ export default function PrescriptionDetail() {
         </div>
       </div>
 
-      ${html}
+      ${contentWithoutSignature}
+
+      <!-- ÚNICA SECCIÓN DE FIRMA (se añade aquí, no está duplicada) -->
+      <div class="signature-section">
+        <div class="signature-line"></div>
+        <div class="doctor-name">${doctor.fullName}</div>
+        <div class="doctor-details">
+          ${doctor.specialty}<br>
+          Cédula Profesional: ${doctor.cedula}<br>
+          Registro Médico: ${doctor.regMedico}
+        </div>
+        <div class="doctor-contact">
+          ${doctor.address}<br>
+          Teléfono: ${CLINIC_PHONE} | Email: ${doctor.email}
+        </div>
+      </div>
     </div>
   </div>
 </body>
 </html>
-  `);
-  w.document.close();
-  w.focus();
-  w.print();
-}
-
+    `);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando receta...</div>;
@@ -332,7 +390,7 @@ export default function PrescriptionDetail() {
             </div>
 
             <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
-              {items.length === 0 && <div className="mm-empty">Aún no hay medicamentos. Clic en “Añadir medicamento”.</div>}
+              {items.length === 0 && <div className="mm-empty">Aún no hay medicamentos. Clic en "Añadir medicamento".</div>}
 
               {items.map((it) => (
                 <div key={it.id} className="mm-item" style={{ cursor: "default" }}>
@@ -375,11 +433,9 @@ export default function PrescriptionDetail() {
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
               <div className="top">
-                
-
                 <div className="muted" style={{ textAlign: "right" }}>
                   <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
-                  <div>Tel: {doctor.phone}</div>
+                  <div>Tel: {CLINIC_PHONE}</div>
                   <div>{doctor.email}</div>
                 </div>
               </div>
@@ -426,9 +482,9 @@ export default function PrescriptionDetail() {
                 </div>
               ) : null}
 
-              <div className="line">
-                <div style={{ fontWeight: 900 }}>{doctor.fullName}</div>
-                <div style={{ fontSize: 12 }}>{doctor.specialty} · Reg. {doctor.regMedico}</div>
+              {/* NOTA: No agregamos línea de firma aquí, solo espacio para ella */}
+              <div style={{ marginTop: "80px" }}>
+                {/* Solo espacio vacío donde irá la firma */}
               </div>
             </div>
           </div>
