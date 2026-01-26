@@ -38,7 +38,7 @@ export default function PrescriptionDetail() {
     specialty: "MÉDICO GENERAL",
     cedula: "050333534-1",
     regMedico: "0503335341 - 1027 - 2023 - 2599595",
-    phone: "0979344305",
+    phone: "0984340286",
     email: "danitas0z@hotmail.com",
     address: "Cotopaxi - Salcedo Barrio La Tebaida (Calle Laguna Quilota y pasaje sin nombre)",
     place: "Salcedo",
