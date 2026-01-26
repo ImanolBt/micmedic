@@ -208,13 +208,19 @@ export default function VisitForm({ patientId, onCreated }) {
 
         <Cie10Picker value={cie} onPick={(x) => setCie(x)} onClear={() => setCie(null)} />
 
-        <input
-          className="mm-input"
-          placeholder="Notas / evolución (opcional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          disabled={saving}
-        />
+        <textarea
+  className="mm-input"
+  placeholder="Notas / evolución clínica (opcional)"
+  value={notes}
+  onChange={(e) => setNotes(e.target.value)}
+  style={{
+    minHeight: "120px",
+    resize: "vertical",
+    paddingTop: "10px",
+    lineHeight: "1.5"
+  }}
+/>
+
 
         {/* SIGNOS VITALES */}
         <div className="mm-card" style={{ padding: 14, marginTop: 10 }}>
