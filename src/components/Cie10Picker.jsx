@@ -9,49 +9,107 @@ export default function Cie10Picker({ value, onPick, onClear }) {
   const [rows, setRows] = useState([]);
   const inputRef = useRef(null);
 
-  const qNorm = useMemo(() => normalizeEs(q), [q]);
+  const qTrim = useMemo(() => (q || "").trim(), [q]);
+  const qUpper = useMemo(() => qTrim.toUpperCase(), [qTrim]);
+  const qNorm = useMemo(() => normalizeEs(qTrim), [qTrim]);
+
+  // Detecta si parece código: J10, E11, A00.1
+  const looksLikeCode = useMemo(() => {
+    return /^[a-z]\d{2}(\.\d+)?$/i.test(qTrim) || /^[a-z]\d{2}$/i.test(qTrim);
+  }, [qTrim]);
 
   useEffect(() => {
     if (!open) return;
+
     const t = setTimeout(async () => {
-      const query = qNorm;
-      if (!query) {
+      if (!qTrim) {
         setRows([]);
         return;
       }
 
       setLoading(true);
 
-      // Si escribe algo tipo "J10" o "A00" => buscar por code
-      const looksLikeCode = /^[a-z]\d{2}(\.\d+)?$/i.test(q.trim()) || /^[a-z]\d{2}$/i.test(q.trim());
+      try {
+        let data = [];
 
-      let res;
-      if (looksLikeCode) {
-        res = await supabase
-          .from("cie10")
-          .select("code,name")
-          .ilike("code", `${q.trim().toUpperCase()}%`)
-          .limit(30);
-      } else {
-        // Buscar por nombre normalizado (rápido si ya pusiste pg_trgm index)
-        res = await supabase
-          .from("cie10")
-          .select("code,name")
-          .ilike("name_norm", `%${query}%`)
-          .limit(30);
-      }
+        if (looksLikeCode) {
+          // ✅ CÓDIGO: J10 -> J10%
+          const res = await supabase
+            .from("cie10")
+            .select("code,name")
+            .ilike("code", `${qUpper}%`)
+            .limit(30);
 
-      if (res.error) {
-        console.error(res.error);
+          if (res.error) throw res.error;
+          data = res.data || [];
+        } else {
+          // ✅ TEXTO: "gripe", "amid", "dolor garganta"
+          // Hacemos 2 búsquedas y luego mezclamos:
+          // 1) contains (subcadena) en name_norm: %amid%
+          // 2) también por code por si escriben algo mixto
+
+          const [r1, r2] = await Promise.all([
+            supabase
+              .from("cie10")
+              .select("code,name,name_norm")
+              .ilike("name_norm", `%${qNorm}%`)
+              .limit(40),
+
+            supabase
+              .from("cie10")
+              .select("code,name,name_norm")
+              .ilike("code", `%${qUpper}%`)
+              .limit(20),
+          ]);
+
+          if (r1.error) throw r1.error;
+          if (r2.error) throw r2.error;
+
+          const map = new Map();
+          [...(r1.data || []), ...(r2.data || [])].forEach((it) => {
+            map.set(it.code, it);
+          });
+
+          data = Array.from(map.values());
+
+          // ✅ Ordenar por relevancia:
+          // - si empieza por lo escrito (más top)
+          // - si contiene lo escrito
+          // - si coincide por código
+          const s = qNorm.toLowerCase();
+          const sc = (x) => {
+            const nn = (x.name_norm || "").toLowerCase();
+            const code = (x.code || "").toLowerCase();
+            let p = 0;
+
+            if (nn.startsWith(s)) p += 120;       // "gripe" al inicio
+            if (nn.includes(s)) p += 80;          // "amid" dentro de "amigdalitis"
+            if (code.startsWith(qTrim.toLowerCase())) p += 100;
+            if (code.includes(qTrim.toLowerCase())) p += 20;
+
+            // Bonus si la coincidencia es corta y exacta
+            if (s.length <= 4 && nn.includes(s)) p += 15;
+
+            return p;
+          };
+
+          data.sort((a, b) => sc(b) - sc(a));
+
+          // Limpiar antes de mostrar
+          data = data.slice(0, 30).map(({ code, name }) => ({ code, name }));
+        }
+
+        setRows(data);
+      } catch (err) {
+        console.error(err);
         setRows([]);
-      } else {
-        setRows(res.data || []);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, 250); // debounce
+    }, 250);
 
     return () => clearTimeout(t);
-  }, [open, qNorm]); // eslint-disable-line
+  }, [open, qTrim, qUpper, qNorm, looksLikeCode]);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
@@ -105,7 +163,7 @@ export default function Cie10Picker({ value, onPick, onClear }) {
             <input
               ref={inputRef}
               className="mm-input"
-              placeholder='Busca por "gripe", "diabetes", "hipertension" o por código "J10", "E11"...'
+              placeholder='Busca por "gripe", "amigdalitis", "amid", o por código "J10", "E11"...'
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -115,21 +173,20 @@ export default function Cie10Picker({ value, onPick, onClear }) {
             </div>
 
             <div className="mm-results">
-              {!loading && q.trim() && rows.length === 0 && (
+              {!loading && qTrim && rows.length === 0 && (
                 <div className="mm-empty">No se encontraron coincidencias.</div>
               )}
 
               {rows.map((r) => (
-                <button
-                  key={r.code}
-                  type="button"
-                  className="mm-result"
-                  onClick={() => pickRow(r)}
-                >
+                <button key={r.code} type="button" className="mm-result" onClick={() => pickRow(r)}>
                   <div className="mm-resultCode">{r.code}</div>
                   <div className="mm-resultName">{r.name}</div>
                 </button>
               ))}
+            </div>
+
+            <div className="mm-hint" style={{ marginTop: 10 }}>
+              Puedes escribir solo una parte: "amid" → "amigdalitis".
             </div>
           </div>
         </div>
