@@ -128,6 +128,96 @@ function vitalsSummary(v, isChild) {
   return parts.length ? parts.join(" · ") : "Sin signos vitales registrados";
 }
 
+// ======= Helpers: números y fechas en letras (ES) =======
+const MONTHS_ES = [
+  "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+  "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+];
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function fmtDateShortDMY(dateISO) {
+  const d = dateISO ? new Date(dateISO) : new Date();
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+// Convierte 0..9999 a letras (en MAYÚSCULAS). Suficiente para años y días.
+function numToWordsEs(n) {
+  n = Number(n);
+  if (!Number.isFinite(n)) return "";
+  if (n < 0) return `MENOS ${numToWordsEs(Math.abs(n))}`;
+  if (n === 0) return "CERO";
+
+  const U = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"];
+  const TEENS = ["DIEZ","ONCE","DOCE","TRECE","CATORCE","QUINCE","DIECISEIS","DIECISIETE","DIECIOCHO","DIECINUEVE"];
+  const TENS = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"];
+  const H = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"];
+
+  // 1..29 con forma natural
+  const SPECIAL_1_29 = {
+    1:"UNO",2:"DOS",3:"TRES",4:"CUATRO",5:"CINCO",6:"SEIS",7:"SIETE",8:"OCHO",9:"NUEVE",
+    10:"DIEZ",11:"ONCE",12:"DOCE",13:"TRECE",14:"CATORCE",15:"QUINCE",
+    16:"DIECISEIS",17:"DIECISIETE",18:"DIECIOCHO",19:"DIECINUEVE",
+    20:"VEINTE",21:"VEINTIUNO",22:"VEINTIDOS",23:"VEINTITRES",24:"VEINTICUATRO",
+    25:"VEINTICINCO",26:"VEINTISEIS",27:"VEINTISIETE",28:"VEINTIOCHO",29:"VEINTINUEVE"
+  };
+
+  if (n <= 29) return SPECIAL_1_29[n];
+
+  // 30..99
+  if (n < 100) {
+    const t = Math.floor(n / 10);
+    const u = n % 10;
+    if (u === 0) return TENS[t];
+    return `${TENS[t]} Y ${U[u]}`;
+  }
+
+  // 100 exacto
+  if (n === 100) return "CIEN";
+
+  // 101..999
+  if (n < 1000) {
+    const c = Math.floor(n / 100);
+    const r = n % 100;
+    return `${H[c]}${r ? " " + numToWordsEs(r) : ""}`.trim();
+  }
+
+  // 1000..9999
+  const miles = Math.floor(n / 1000);
+  const r = n % 1000;
+
+  let milesTxt = "";
+  if (miles === 1) milesTxt = "MIL";
+  else milesTxt = `${numToWordsEs(miles)} MIL`;
+
+  return `${milesTxt}${r ? " " + numToWordsEs(r) : ""}`.trim();
+}
+
+// Fecha a letras: "DOS DE DICIEMBRE DEL DOS MIL VEINTICINCO"
+function dateToWordsEs(dateISO) {
+  const d = dateISO ? new Date(dateISO) : new Date();
+  const day = d.getDate();
+  const monthName = MONTHS_ES[d.getMonth()];
+  const year = d.getFullYear();
+
+  const dayWords = numToWordsEs(day);
+  const yearWords = numToWordsEs(year);
+
+  return `${dayWords} DE ${monthName} DEL ${yearWords}`;
+}
+
+// Reposo: calcula "hasta" inclusivo (si son 3 días y empieza 02 => termina 04)
+function calcEndDateInclusive(startISO, days) {
+  const start = new Date(startISO);
+  const n = Number(days || 0);
+  if (!Number.isFinite(start.getTime())) return null;
+  if (!Number.isFinite(n) || n <= 0) return start.toISOString();
+  const end = new Date(start.getTime() + (n - 1) * 86400000);
+  return end.toISOString();
+}
+
 export default function VisitDetail() {
   const { id } = useParams(); // /visits/:id
   const nav = useNavigate();
@@ -406,6 +496,21 @@ export default function VisitDetail() {
         ? `${visit.cie10_name} CIE10 (${visit.cie10_code})`
         : visit.cie10_name || visit.cie10_code || "-";
 
+    // Calcular fechas para el reposo
+    const startISO = restFrom;
+    const endISO = calcEndDateInclusive(startISO, daysRestComputed);
+    
+    const daysN = Number(daysRestComputed || 0);
+    const daysWords = numToWordsEs(daysN);
+    
+    const startShort = fmtDateShortDMY(startISO);
+    const endShort = fmtDateShortDMY(endISO);
+    
+    const startWords = dateToWordsEs(startISO);
+    const endWords = dateToWordsEs(endISO);
+    
+    const reposoLine = `Reposo absoluto: ${daysN} (${daysWords}) DÍA(S), DESDE EL ${startShort} (${startWords}) HASTA EL ${endShort} (${endWords})`;
+
     const baseBody = [
       "A quien interese,",
       "",
@@ -418,7 +523,7 @@ export default function VisitDetail() {
       `Tipo de atención: ${attentionType}`,
       `Fecha de atención: ${fmtDateShort(visit.visit_date)}`,
       `Tratamiento: ${treatment}`,
-      `Reposo absoluto: ${daysRestComputed} DÍA(S), DESDE EL ${fmtDateShort(restFrom)} HASTA EL ${fmtDateShort(restTo)}`,
+      reposoLine,
       "",
       `Entidad: ${entity || "-"}`,
       `Cargo: ${position || "-"}`,
@@ -914,7 +1019,7 @@ Fecha de atencion: ${fmtDateShort(visit.visit_date)}
 
 Tratamiento: ${treatment}
 
-Reposo absoluto: ${daysRestComputed} DÍA(S), DESDE EL ${fmtDateShort(restFrom)} HASTA EL ${fmtDateShort(restTo)}
+Reposo absoluto: ${Number(daysRestComputed || 0)} (${numToWordsEs(Number(daysRestComputed || 0))}) DIAS, DESDE EL ${fmtDateShortDMY(restFrom)} (${dateToWordsEs(restFrom)}) HASTA EL ${fmtDateShortDMY(restTo)} (${dateToWordsEs(restTo)})
 
 Entidad: ${entity || "-"}
 

@@ -186,7 +186,6 @@ export default function Cie10Picker({ value, onPick, onClear }) {
             </div>
 
             <div className="mm-hint" style={{ marginTop: 10 }}>
-              Puedes escribir solo una parte: "amid" → "amigdalitis".
             </div>
           </div>
         </div>
