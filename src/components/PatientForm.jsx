@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function toTextArray(csv) {
   const s = (csv || "").trim();
@@ -11,6 +11,7 @@ function toTextArray(csv) {
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
+
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
 
@@ -18,7 +19,30 @@ function calcAgeFromBirthdate(birthdate) {
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  // ✅ Bebés: 0 años es válido
   return age >= 0 ? age : null;
+}
+
+// ✅ Etiqueta “bonita”: meses si < 1 año
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
+  return `${years} año(s)`;
 }
 
 export default function PatientForm({ onCreate, disabled }) {
@@ -28,27 +52,33 @@ export default function PatientForm({ onCreate, disabled }) {
   const [phone, setPhone] = useState("");
 
   const [birthdate, setBirthdate] = useState(""); // YYYY-MM-DD
-  const [ageManual, setAgeManual] = useState(""); // solo referencia
+  const [ageManual, setAgeManual] = useState(""); // usado solo si no hay birthdate
 
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
 
+  // ✅ edad calculada automáticamente si hay fecha
   const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
 
+  // ✅ si el usuario pone fecha, limpiamos edad manual para evitar inconsistencias
+  useEffect(() => {
+    if (birthdate) setAgeManual("");
+  }, [birthdate]);
+
+  // ✅ validación de edad manual (si se usa)
+  const ageManualNum = useMemo(() => {
+    const s = String(ageManual || "").trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : null; // ✅ permite 0 (bebé)
+  }, [ageManual]);
+
+  // ✅ puede enviar si: nombre ok + (fecha o edadManual válida)
   const canSubmit = useMemo(() => {
     const hasName = name.trim().length >= 3;
-
-    // Exigir que exista birthdate o edad manual válida
-    const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
-
-    let ageOk = true;
-    if (!birthdate && ageManual.trim() !== "") {
-      const n = Number(ageManual);
-      ageOk = Number.isFinite(n) && n >= 0 && n <= 130;
-    }
-
-    return hasName && hasBirthOrAge && ageOk;
-  }, [name, birthdate, ageManual]);
+    const hasBirthOrAge = Boolean(birthdate) || ageManualNum !== null;
+    return hasName && hasBirthOrAge;
+  }, [name, birthdate, ageManualNum]);
 
   function reset() {
     setName("");
@@ -65,12 +95,15 @@ export default function PatientForm({ onCreate, disabled }) {
     e.preventDefault();
     if (!canSubmit || disabled) return;
 
+    // ✅ Si no hay birthdate, igual guardas con edad manual (si tu tabla tiene campo age)
+    // Si tu tabla NO tiene campo "age", no lo mandes. Aquí lo mando solo como ejemplo:
     const payload = {
       name: name.trim(),
       sex,
-      cedula: cedula.trim() || null,   // ✅ ahora puede ir null
+      cedula: cedula.trim() || null, // ✅ opcional
       phone: phone.trim() || null,
       birthdate: birthdate ? birthdate : null,
+      // age: birthdate ? autoAge : ageManualNum, // <-- descomenta SOLO si tu tabla patients tiene columna "age"
       allergies: toTextArray(allergiesCSV),
       notes: notes.trim() || null,
     };
@@ -78,6 +111,14 @@ export default function PatientForm({ onCreate, disabled }) {
     onCreate(payload);
     reset();
   }
+
+  // ✅ valor que se muestra en input edad
+  const displayedAgeValue = useMemo(() => {
+    // si hay birthdate, mostramos autoAge (años)
+    if (birthdate && autoAge !== null) return String(autoAge);
+    // si no, mostramos lo que escribe el usuario
+    return String(ageManual || "");
+  }, [birthdate, autoAge, ageManual]);
 
   return (
     <form className="mm-form" onSubmit={submit}>
@@ -102,16 +143,19 @@ export default function PatientForm({ onCreate, disabled }) {
         <input
           className="mm-input"
           type="number"
+          min={0}
+          step={1}
           placeholder="Edad (si no hay fecha)"
-          value={autoAge ?? ageManual}
+          value={displayedAgeValue}
           onChange={(e) => setAgeManual(e.target.value)}
-          disabled={disabled || autoAge !== null}
-          title={
-            autoAge !== null
-              ? "Se calcula desde la fecha de nacimiento"
-              : "Edad manual solo si no hay fecha"
-          }
+          disabled={disabled || Boolean(birthdate)} // ✅ si hay fecha, no deja editar edad manual
+          title={birthdate ? "Se calcula desde la fecha de nacimiento" : "Edad manual solo si no hay fecha"}
         />
+      </div>
+
+      {/* ✅ etiqueta para bebés: meses si < 1 año */}
+      <div className="mm-hint" style={{ marginTop: -6 }}>
+        Edad calculada: <b>{birthdate ? ageLabelFromBirthdate(birthdate) : (ageManualNum !== null ? `${ageManualNum} año(s)` : "-")}</b>
       </div>
 
       <div className="mm-row">
@@ -148,16 +192,16 @@ export default function PatientForm({ onCreate, disabled }) {
         value={allergiesCSV}
         onChange={(e) => setAllergiesCSV(e.target.value)}
         disabled={disabled}
-        style={{ minHeight: 80, paddingTop: 10 }}
+        style={{ minHeight: 80, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
       />
 
       <textarea
         className="mm-input"
-        placeholder="Notas (opcional)"
+        placeholder="Notas / Evolución (opcional)"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         disabled={disabled}
-        style={{ minHeight: 80, paddingTop: 10 }}
+        style={{ minHeight: 110, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
       />
 
       <button className="mm-btn" disabled={!canSubmit || disabled}>

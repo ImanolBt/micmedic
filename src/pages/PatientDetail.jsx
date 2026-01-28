@@ -6,6 +6,7 @@ import PatientEditModal from "../components/PatientEditModal";
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
+
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
 
@@ -13,8 +14,31 @@ function calcAgeFromBirthdate(birthdate) {
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  // 👇 Para bebés, devolvemos 0 (no rompe nada)
   return age >= 0 ? age : null;
 }
+
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
+  return `${years} año(s)`;
+}
+
 
 function fmtNum(n, digits = 1) {
   if (n === null || n === undefined || n === "") return null;
@@ -123,9 +147,11 @@ export default function PatientDetail() {
 
     const v = await supabase
       .from("medical_visits")
-      .select(
-        "id, visit_date, reason, cie10_code, cie10_name, notes, created_at, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
-      )
+      .select(`
+        id, visit_date, reason, notes, created_at,
+        bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile,
+        medical_visit_diagnoses:medical_visit_diagnoses ( cie10_code, cie10_name )
+      `)
       .eq("patient_id", patientId)
       .order("visit_date", { ascending: false });
 
@@ -189,7 +215,7 @@ export default function PatientDetail() {
         <div className="mm-itemMeta" style={{ padding: 14 }}>
           <div><b>Sexo:</b> {patient.sex === "M" ? "Masculino" : "Femenino"}</div>
           <div><b>Nacimiento:</b> {patient.birthdate || "-"}</div>
-          <div><b>Edad:</b> {age !== null ? `${age} años` : "-"}</div>
+<div><b>Edad:</b> {ageLabelFromBirthdate(patient.birthdate)}</div>
           <div>
             <b>Alergias:</b>{" "}
             {Array.isArray(patient.allergies) ? patient.allergies.join(", ") : patient.allergies || "-"}
@@ -238,7 +264,11 @@ export default function PatientDetail() {
                       </div>
 
                       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <div className="mm-chip">{v.cie10_code ? `${v.cie10_code}` : "CIE10"}</div>
+                        <div className="mm-chip">
+                          {Array.isArray(v.medical_visit_diagnoses) && v.medical_visit_diagnoses.length > 0
+                            ? `${v.medical_visit_diagnoses.length} dx`
+                            : "CIE10"}
+                        </div>
 
                         <div className="mm-chip" title="Estado de signos vitales">
                           {status.emoji} {status.text}
@@ -259,7 +289,12 @@ export default function PatientDetail() {
                     </div>
 
                     <div className="mm-itemMeta">
-                      <div><b>Diagnóstico:</b> {v.cie10_name || "-"}</div>
+                      <div>
+                        <b>Diagnósticos:</b>{" "}
+                        {Array.isArray(v.medical_visit_diagnoses) && v.medical_visit_diagnoses.length > 0
+                          ? v.medical_visit_diagnoses.map((d) => `${d.cie10_name} (${d.cie10_code})`).join(" · ")
+                          : "-"}
+                      </div>
                       <div><b>Signos vitales:</b> {vitalsSummary(v)}</div>
                       <div><b>Notas:</b> {v.notes || "-"}</div>
                     </div>

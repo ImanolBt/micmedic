@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import Cie10Picker from "./Cie10Picker";
+import Cie10MultiPicker from "./Cie10MultiPicker";
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
+
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
 
@@ -11,8 +12,31 @@ function calcAgeFromBirthdate(birthdate) {
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  // 👇 Para bebés, devolvemos 0 (no rompe nada)
   return age >= 0 ? age : null;
 }
+
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
+  return `${years} año(s)`;
+}
+
 
 function calcBMI(weightKg, heightCm) {
   const w = Number(weightKg);
@@ -35,7 +59,9 @@ export default function VisitForm({ patientId, onCreated }) {
 
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
-  const [cie, setCie] = useState(null);
+
+  // ---- MÚLTIPLES DIAGNÓSTICOS ----
+  const [diags, setDiags] = useState([]); // [{code, name}, ...]
 
   // ---- cargar paciente para edad/sexo ----
   const [patient, setPatient] = useState(null);
@@ -88,9 +114,10 @@ export default function VisitForm({ patientId, onCreated }) {
 
   const liveBMI = useMemo(() => calcBMI(weightKg, heightCm), [weightKg, heightCm]);
 
+  // Validación actualizada para múltiples diagnósticos
   const canSave = useMemo(() => {
-    return patientId && reason.trim().length >= 3 && cie?.code;
-  }, [patientId, reason, cie]);
+    return patientId && reason.trim().length >= 3 && diags.length > 0;
+  }, [patientId, reason, diags]);
 
   function openOms() {
     // sugerimos sexo según paciente si existe
@@ -123,47 +150,15 @@ export default function VisitForm({ patientId, onCreated }) {
     setOmsOpen(false);
   }
 
-  async function createVisit(e) {
-    e.preventDefault();
-    if (!canSave || saving) return;
-
-    setSaving(true);
-
-    const payload = {
-      patient_id: patientId,
-      visit_date: visitDate ? new Date(visitDate).toISOString() : new Date().toISOString(),
-      reason: reason.trim(),
-      cie10_code: cie.code,
-      cie10_name: cie.name,
-      notes: notes.trim() || null,
-
-      bp_systolic: bpSys !== "" ? Number(bpSys) : null,
-      bp_diastolic: bpDia !== "" ? Number(bpDia) : null,
-      heart_rate: heartRate !== "" ? Number(heartRate) : null,
-      spo2: spo2 !== "" ? Number(spo2) : null,
-      temp_c: tempC !== "" ? Number(tempC) : null,
-      weight_kg: weightKg !== "" ? Number(weightKg) : null,
-      height_cm: heightCm !== "" ? Number(heightCm) : null,
-
-      bmi: age !== null && age >= 10 ? (liveBMI ?? null) : null,
-
-      growth_percentile: growthPercentile !== "" ? Number(growthPercentile) : null,
-      growth_note: (growthNote || "").trim() ? growthNote.trim() : null,
-    };
-
-    const { error } = await supabase.from("medical_visits").insert(payload);
-
-    setSaving(false);
-
-    if (error) {
-      console.error(error);
-      alert(error.message || "Error guardando consulta");
-      return;
-    }
-
+  function resetForm() {
+    setVisitDate(() => {
+      const d = new Date();
+      const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      return iso;
+    });
     setReason("");
     setNotes("");
-    setCie(null);
+    setDiags([]);
 
     setBpSys("");
     setBpDia("");
@@ -175,7 +170,73 @@ export default function VisitForm({ patientId, onCreated }) {
 
     setGrowthPercentile("");
     setGrowthNote("");
+  }
 
+  async function createVisit(e) {
+    e.preventDefault();
+    if (!canSave || saving) return;
+
+    setSaving(true);
+
+    // 1) Crear la visita principal (sin diagnósticos aquí)
+    const visitPayload = {
+      patient_id: patientId,
+      visit_date: visitDate ? new Date(visitDate).toISOString() : new Date().toISOString(),
+      reason: reason.trim(),
+      notes: notes.trim() || null,
+
+      // Signos vitales
+      bp_systolic: bpSys !== "" ? Number(bpSys) : null,
+      bp_diastolic: bpDia !== "" ? Number(bpDia) : null,
+      heart_rate: heartRate !== "" ? Number(heartRate) : null,
+      spo2: spo2 !== "" ? Number(spo2) : null,
+      temp_c: tempC !== "" ? Number(tempC) : null,
+      weight_kg: weightKg !== "" ? Number(weightKg) : null,
+      height_cm: heightCm !== "" ? Number(heightCm) : null,
+
+      // Cálculos condicionales
+      bmi: age !== null && age >= 10 ? (liveBMI ?? null) : null,
+      growth_percentile: growthPercentile !== "" ? Number(growthPercentile) : null,
+      growth_note: (growthNote || "").trim() ? growthNote.trim() : null,
+    };
+
+    // Insertar visita principal
+    const { data: visitData, error: visitError } = await supabase
+      .from("medical_visits")
+      .insert(visitPayload)
+      .select("id")
+      .single();
+
+    if (visitError) {
+      console.error(visitError);
+      alert(visitError.message || "Error guardando consulta");
+      setSaving(false);
+      return;
+    }
+
+    const visitId = visitData.id;
+
+    // 2) Guardar diagnósticos múltiples en tabla separada
+    if (diags.length > 0) {
+      const diagPayload = diags.map((d) => ({
+        visit_id: visitId,
+        cie10_code: d.code,
+        cie10_name: d.name,
+      }));
+
+      const { error: diagError } = await supabase
+        .from("medical_visit_diagnoses")
+        .insert(diagPayload);
+
+      if (diagError) {
+        console.error(diagError);
+        alert("La consulta se creó, pero falló guardar algunos diagnósticos. Verifica la tabla medical_visit_diagnoses.");
+        // Continuamos aunque haya error en diagnósticos
+      }
+    }
+
+    setSaving(false);
+    resetForm();
     onCreated?.();
   }
 
@@ -206,21 +267,27 @@ export default function VisitForm({ patientId, onCreated }) {
           />
         </div>
 
-        <Cie10Picker value={cie} onPick={(x) => setCie(x)} onClear={() => setCie(null)} />
+        {/* DIAGNÓSTICOS MÚLTIPLES - REEMPLAZA EL PICKER SIMPLE */}
+        <div style={{ marginBottom: 16 }}>
+          <Cie10MultiPicker selected={diags} onChange={setDiags} disabled={saving} />
+          <div className="mm-hint" style={{ marginTop: 6 }}>
+            Puedes seleccionar múltiples diagnósticos CIE10
+          </div>
+        </div>
 
         <textarea
-  className="mm-input"
-  placeholder="Notas / evolución clínica (opcional)"
-  value={notes}
-  onChange={(e) => setNotes(e.target.value)}
-  style={{
-    minHeight: "120px",
-    resize: "vertical",
-    paddingTop: "10px",
-    lineHeight: "1.5"
-  }}
-/>
-
+          className="mm-input"
+          placeholder="Notas / evolución clínica (opcional)"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          style={{
+            minHeight: "120px",
+            resize: "vertical",
+            paddingTop: "10px",
+            lineHeight: "1.5"
+          }}
+          disabled={saving}
+        />
 
         {/* SIGNOS VITALES */}
         <div className="mm-card" style={{ padding: 14, marginTop: 10 }}>
@@ -380,14 +447,21 @@ export default function VisitForm({ patientId, onCreated }) {
           ) : null}
         </div>
 
-        <button className="mm-btn" disabled={!canSave || saving} style={{ marginTop: 10 }}>
-          Guardar consulta
+        <button 
+          className="mm-btn" 
+          disabled={!canSave || saving} 
+          style={{ marginTop: 10 }}
+        >
+          {saving ? "Guardando..." : "Guardar consulta"}
         </button>
 
-        <div className="mm-hint">Requisito: motivo + diagnóstico CIE10 seleccionado.</div>
+        <div className="mm-hint">
+          Requisito: motivo + al menos un diagnóstico CIE10 seleccionado.
+          {diags.length > 0 && ` (${diags.length} diagnóstico${diags.length > 1 ? 's' : ''} seleccionado${diags.length > 1 ? 's' : ''})`}
+        </div>
       </form>
 
-      {/* MODAL OMS */}
+      {/* MODAL OMS (MANTENIDO IGUAL) */}
       {omsOpen ? (
         <div
           role="dialog"

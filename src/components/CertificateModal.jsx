@@ -1,8 +1,20 @@
 import { useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+// --- CORRECCIÓN AQUÍ ---
 function formatDateES(d) {
   if (!d) return "";
+
+  // Si d es un string tipo '2026-01-22' (sin hora), lo tratamos manualmente
+  // para evitar que el timezone lo retrase un día.
+  if (typeof d === 'string' && d.length === 10 && d.includes('-')) {
+    const [year, month, day] = d.split('-').map(Number);
+    // Creamos la fecha usando el constructor local (año, mes base 0, día)
+    const dt = new Date(year, month - 1, day);
+    return dt.toLocaleDateString("es-EC", { year: "numeric", month: "long", day: "2-digit" });
+  }
+
+  // Comportamiento normal para Timestamps completos (con hora)
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return String(d);
   return dt.toLocaleDateString("es-EC", { year: "numeric", month: "long", day: "2-digit" });
@@ -23,6 +35,8 @@ function openPrintWindow(html) {
 
 function certificateHTML({ cert, patient, visit }) {
   const diag = `${visit?.cie10_name || ""} CIE10 (${visit?.cie10_code || ""})`.trim();
+  
+  // Usamos la fecha seleccionada o la actual
   const issue = cert.issue_date || new Date().toISOString().slice(0, 10);
 
   return `<!doctype html>
@@ -124,6 +138,7 @@ export default function CertificateModal({ open, onClose, visit, patient }) {
     return c || n || "-";
   }, [visit]);
 
+  // Inicializamos el formulario
   const [form, setForm] = useState(() => ({
     issue_date: new Date().toISOString().slice(0, 10),
     clinic_name: "Consultorio médico MIC MEDIC",
@@ -145,7 +160,7 @@ export default function CertificateModal({ open, onClose, visit, patient }) {
     treatment: "Farmacológico",
 
     rest_days: "",
-    rest_from: "",
+    rest_from: new Date().toISOString().slice(0, 10), // Inicializamos con fecha de hoy para evitar nulls
     rest_to: "",
 
     extra_notes: "",

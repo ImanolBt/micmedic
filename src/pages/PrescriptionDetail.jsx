@@ -223,7 +223,7 @@ export default function PrescriptionDetail() {
       gap: 16px;
       margin-bottom: 8px;
     }
-    .logoTop { height: 150px; object-fit: contain; }
+    .logoTop { height: 85px; object-fit: contain; }
 
     /* Estilos originales */
     .top { display:flex; justify-content: space-between; gap: 12px; align-items:flex-start; }

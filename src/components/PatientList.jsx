@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
+
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
 
@@ -9,8 +10,39 @@ function calcAgeFromBirthdate(birthdate) {
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  // 👇 Para bebés, devolvemos 0 (no rompe nada)
   return age >= 0 ? age : null;
 }
+
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  // 👶 bebés
+  if (years <= 0) {
+    return `${Math.max(months, 0)} mes(es)`;
+  }
+
+  // 👦 niños / adultos
+  return `${years} año(s)`;
+}
+
+
 
 function formatAllergies(a) {
   if (Array.isArray(a)) return a.filter(Boolean).join(", ");
@@ -48,7 +80,7 @@ export default function PatientList({ loading, patients, onRefresh }) {
   return (
     <div className="mm-list">
       {patients.map((p) => {
-        const age = calcAgeFromBirthdate(p.birthdate);
+const ageLabel = ageLabelFromBirthdate(p.birthdate);
         const allergies = formatAllergies(p.allergies);
 
         return (
@@ -75,7 +107,7 @@ export default function PatientList({ loading, patients, onRefresh }) {
                 <b>Tel:</b> {p.phone || "-"}
               </div>
               <div>
-                <b>Edad:</b> {age !== null ? `${age} años` : "-"}
+<div><b>Edad:</b> {ageLabel}</div>
               </div>
               <div>
                 <b>Nacimiento:</b> {p.birthdate || "-"}

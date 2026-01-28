@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import Cie10MultiPicker from "../components/Cie10MultiPicker";
 
 /**
  * VisitDetail.jsx
@@ -9,12 +10,14 @@ import { supabase } from "../lib/supabase";
  * - medical_visits (incluye signos vitales)
  * - patients
  * - certificates (rest_from, rest_to)
+ * - medical_visit_diagnoses (diagnósticos múltiples)
  */
 
 function fmtDateLong(dateISO) {
   const d = dateISO ? new Date(dateISO) : new Date();
   return d.toLocaleDateString("es-EC", { year: "numeric", month: "long", day: "2-digit" });
 }
+
 function fmtDateShort(dateISO) {
   const d = dateISO ? new Date(dateISO) : new Date();
   return d.toLocaleDateString("es-EC", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -26,7 +29,6 @@ function toNum(v) {
 }
 
 function calcisoDateOnly(dateISO) {
-  // Devuelve YYYY-MM-DD (para inputs type="date")
   if (!dateISO) return "";
   const d = new Date(dateISO);
   if (Number.isNaN(d.getTime())) return "";
@@ -34,7 +36,6 @@ function calcisoDateOnly(dateISO) {
 }
 
 function toLocalDatetimeValue(dateISO) {
-  // Para input type="datetime-local"
   if (!dateISO) return "";
   const d = new Date(dateISO);
   if (Number.isNaN(d.getTime())) return "";
@@ -43,7 +44,6 @@ function toLocalDatetimeValue(dateISO) {
 }
 
 function fromLocalDatetimeValue(v) {
-  // v: "YYYY-MM-DDTHH:mm" -> ISO
   if (!v) return null;
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return null;
@@ -71,7 +71,6 @@ function calcBMI(weightKg, heightCm) {
   return Number.isFinite(bmi) ? bmi : null;
 }
 
-// Semáforo rápido (simple, útil y sin complicar)
 function classifyVitals(v) {
   let level = "ok";
   const setLevel = (next) => {
@@ -128,7 +127,6 @@ function vitalsSummary(v, isChild) {
   return parts.length ? parts.join(" · ") : "Sin signos vitales registrados";
 }
 
-// ======= Helpers: números y fechas en letras (ES) =======
 const MONTHS_ES = [
   "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
   "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
@@ -138,12 +136,22 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
+// ===== FUNCIÓN CORREGIDA =====
 function fmtDateShortDMY(dateISO) {
-  const d = dateISO ? new Date(dateISO) : new Date();
+  if (!dateISO) {
+    const d = new Date();
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+  // Si es string de fecha (YYYY-MM-DD), parsearlo directamente sin zona horaria
+  if (typeof dateISO === 'string' && dateISO.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateISO.split('-').map(Number);
+    return `${pad2(day)}/${pad2(month)}/${year}`;
+  }
+  // Si tiene timestamp completo
+  const d = new Date(dateISO);
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-// Convierte 0..9999 a letras (en MAYÚSCULAS). Suficiente para años y días.
 function numToWordsEs(n) {
   n = Number(n);
   if (!Number.isFinite(n)) return "";
@@ -155,7 +163,6 @@ function numToWordsEs(n) {
   const TENS = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"];
   const H = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"];
 
-  // 1..29 con forma natural
   const SPECIAL_1_29 = {
     1:"UNO",2:"DOS",3:"TRES",4:"CUATRO",5:"CINCO",6:"SEIS",7:"SIETE",8:"OCHO",9:"NUEVE",
     10:"DIEZ",11:"ONCE",12:"DOCE",13:"TRECE",14:"CATORCE",15:"QUINCE",
@@ -166,7 +173,6 @@ function numToWordsEs(n) {
 
   if (n <= 29) return SPECIAL_1_29[n];
 
-  // 30..99
   if (n < 100) {
     const t = Math.floor(n / 10);
     const u = n % 10;
@@ -174,17 +180,14 @@ function numToWordsEs(n) {
     return `${TENS[t]} Y ${U[u]}`;
   }
 
-  // 100 exacto
   if (n === 100) return "CIEN";
 
-  // 101..999
   if (n < 1000) {
     const c = Math.floor(n / 100);
     const r = n % 100;
     return `${H[c]}${r ? " " + numToWordsEs(r) : ""}`.trim();
   }
 
-  // 1000..9999
   const miles = Math.floor(n / 1000);
   const r = n % 1000;
 
@@ -195,20 +198,37 @@ function numToWordsEs(n) {
   return `${milesTxt}${r ? " " + numToWordsEs(r) : ""}`.trim();
 }
 
-// Fecha a letras: "DOS DE DICIEMBRE DEL DOS MIL VEINTICINCO"
+// ===== FUNCIÓN CORREGIDA =====
 function dateToWordsEs(dateISO) {
-  const d = dateISO ? new Date(dateISO) : new Date();
+  if (!dateISO) {
+    const d = new Date();
+    const day = d.getDate();
+    const monthName = MONTHS_ES[d.getMonth()];
+    const year = d.getFullYear();
+    const dayWords = numToWordsEs(day);
+    const yearWords = numToWordsEs(year);
+    return `${dayWords} DE ${monthName} DEL ${yearWords}`;
+  }
+
+  // Si es string de fecha (YYYY-MM-DD), parsearlo directamente
+  if (typeof dateISO === 'string' && dateISO.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateISO.split('-').map(Number);
+    const monthName = MONTHS_ES[month - 1]; // month es 1-12, array es 0-11
+    const dayWords = numToWordsEs(day);
+    const yearWords = numToWordsEs(year);
+    return `${dayWords} DE ${monthName} DEL ${yearWords}`;
+  }
+
+  // Si tiene timestamp completo
+  const d = new Date(dateISO);
   const day = d.getDate();
   const monthName = MONTHS_ES[d.getMonth()];
   const year = d.getFullYear();
-
   const dayWords = numToWordsEs(day);
   const yearWords = numToWordsEs(year);
-
   return `${dayWords} DE ${monthName} DEL ${yearWords}`;
 }
 
-// Reposo: calcula "hasta" inclusivo (si son 3 días y empieza 02 => termina 04)
 function calcEndDateInclusive(startISO, days) {
   const start = new Date(startISO);
   const n = Number(days || 0);
@@ -219,13 +239,13 @@ function calcEndDateInclusive(startISO, days) {
 }
 
 export default function VisitDetail() {
-  const { id } = useParams(); // /visits/:id
+  const { id } = useParams();
   const nav = useNavigate();
   const printRef = useRef(null);
 
   const visitId = useMemo(() => {
     const n = Number(id);
-    return Number.isFinite(n) ? n : null; // medical_visits.id es bigint
+    return Number.isFinite(n) ? n : null;
   }, [id]);
 
   const [loading, setLoading] = useState(true);
@@ -237,13 +257,13 @@ export default function VisitDetail() {
   const [editVisit, setEditVisit] = useState(false);
   const [savingVisit, setSavingVisit] = useState(false);
 
-  const [visitDateEdit, setVisitDateEdit] = useState(""); // datetime-local
+  const [visitDateEdit, setVisitDateEdit] = useState("");
   const [reasonEdit, setReasonEdit] = useState("");
   const [cie10CodeEdit, setCie10CodeEdit] = useState("");
   const [cie10NameEdit, setCie10NameEdit] = useState("");
   const [visitNotesEdit, setVisitNotesEdit] = useState("");
 
-  // ===== Signos vitales (inputs) =====
+  // ===== Signos vitales =====
   const [bpSys, setBpSys] = useState("");
   const [bpDia, setBpDia] = useState("");
   const [hr, setHr] = useState("");
@@ -255,19 +275,19 @@ export default function VisitDetail() {
   const [showOmsModal, setShowOmsModal] = useState(false);
   const [savingVitals, setSavingVitals] = useState(false);
 
-  // ===== Certificate data =====
+  // ===== DIAGNÓSTICOS MÚLTIPLES =====
+  const [diags, setDiags] = useState([]);
+  const [savingDiags, setSavingDiags] = useState(false);
+
+  // ===== Certificate data (actualizado según nueva estructura) =====
   const [certId, setCertId] = useState(null);
   const [certDate, setCertDate] = useState(() => new Date().toISOString());
-
-  // NUEVO: rango de reposo
-  const [restFrom, setRestFrom] = useState(""); // YYYY-MM-DD
-  const [restTo, setRestTo] = useState("");     // YYYY-MM-DD
-
+  const [restFrom, setRestFrom] = useState("");
+  const [restTo, setRestTo] = useState("");
   const [entity, setEntity] = useState("");
   const [position, setPosition] = useState("");
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
-
   const [includeNotes, setIncludeNotes] = useState(false);
   const [notes, setNotes] = useState("");
 
@@ -298,103 +318,122 @@ export default function VisitDetail() {
     const b = new Date(restTo);
     if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
     const diff = Math.floor((b.getTime() - a.getTime()) / 86400000);
-    return diff >= 0 ? diff + 1 : 0; // incluye ambos días
+    return diff >= 0 ? diff + 1 : 0;
   }, [restFrom, restTo]);
+
+  // Función para formatear diagnósticos múltiples
+  function formatDiagnosesForDisplay(diagnosesArray) {
+    if (!diagnosesArray || diagnosesArray.length === 0) return "-";
+    return diagnosesArray.map(d => 
+      d.name ? `${d.name} (${d.code})` : d.code
+    ).join("; ");
+  }
 
   async function loadAll() {
     if (!visitId) return;
     setLoading(true);
 
-    // 1) Visit (incluye signos vitales)
-    const v = await supabase
-      .from("medical_visits")
-      .select(
-        "id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, user_id, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
-      )
-      .eq("id", visitId)
-      .single();
+    try {
+      // 1) Visit
+      const v = await supabase
+        .from("medical_visits")
+        .select(
+          "id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, user_id, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
+        )
+        .eq("id", visitId)
+        .single();
 
-    if (v.error) {
-      console.error(v.error);
-      alert(v.error.message || "No se pudo cargar la consulta");
+      if (v.error) throw new Error(`Error cargando consulta: ${v.error.message}`);
+
+      // 2) Patient
+      const p = await supabase
+        .from("patients")
+        .select("*")
+        .eq("id", v.data.patient_id)
+        .single();
+
+      if (p.error) throw new Error(`Error cargando paciente: ${p.error.message}`);
+
+      setVisit(v.data);
+      setPatient(p.data);
+
+      // Cargar inputs editar consulta
+      setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
+      setReasonEdit(v.data.reason ?? "");
+      setCie10CodeEdit(v.data.cie10_code ?? "");
+      setCie10NameEdit(v.data.cie10_name ?? "");
+      setVisitNotesEdit(v.data.notes ?? "");
+
+      // Cargar inputs de signos vitales
+      setBpSys(v.data.bp_sys ?? "");
+      setBpDia(v.data.bp_dia ?? "");
+      setHr(v.data.hr ?? "");
+      setSpo2(v.data.spo2 ?? "");
+      setTempC(v.data.temp_c ?? "");
+      setWeightKg(v.data.weight_kg ?? "");
+      setHeightCm(v.data.height_cm ?? "");
+      setPediatricPercentile(v.data.pediatric_percentile ?? "");
+
+      // 3) DIAGNÓSTICOS MÚLTIPLES
+      const d = await supabase
+        .from("medical_visit_diagnoses")
+        .select("cie10_code, cie10_name")
+        .eq("visit_id", visitId)
+        .order("id", { ascending: true });
+
+      if (d.error) {
+        console.error("Error cargando diagnósticos:", d.error);
+        setDiags([]);
+      } else {
+        setDiags((d.data || []).map((x) => ({ code: x.cie10_code, name: x.cie10_name })));
+      }
+
+      // 4) Certificate (si existe) - ACTUALIZADO según nueva estructura
+      const c = await supabase
+        .from("certificates")
+        .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, include_notes, notes, title, body, visit_id, patient_id, created_at, created_by")
+        .eq("visit_id", visitId)
+        .maybeSingle();
+
+      if (c.error && c.error.code !== 'PGRST116') {
+        console.error("Error cargando certificado:", c.error);
+      } else if (c.data) {
+        setCertId(c.data.id);
+        setCertDate(c.data.date || new Date().toISOString());
+        setRestFrom(c.data.rest_from ? String(c.data.rest_from) : "");
+        setRestTo(c.data.rest_to ? String(c.data.rest_to) : "");
+        setEntity(c.data.entity ?? "");
+        setPosition(c.data.position ?? "");
+        setAddress(c.data.address ?? "");
+        setEmail(c.data.email ?? "");
+        setIncludeNotes(!!c.data.include_notes);
+        setNotes(c.data.notes ?? "");
+      } else {
+        // No existe certificado, inicializar valores
+        setCertId(null);
+        setCertDate(v.data.visit_date || new Date().toISOString());
+        const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
+        setRestFrom(visitDay);
+        setRestTo("");
+        setEntity("");
+        setPosition("");
+        setAddress("");
+        setEmail("");
+        setIncludeNotes(false);
+        setNotes("");
+      }
+
+    } catch (error) {
+      console.error("Error en loadAll:", error);
+      alert(error.message || "Error al cargar los datos");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // 2) Patient
-    const p = await supabase.from("patients").select("*").eq("id", v.data.patient_id).single();
-    if (p.error) {
-      console.error(p.error);
-      alert(p.error.message || "No se pudo cargar el paciente");
-      setLoading(false);
-      return;
-    }
-
-    setVisit(v.data);
-    setPatient(p.data);
-
-    // ===== cargar inputs editar consulta =====
-    setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
-    setReasonEdit(v.data.reason ?? "");
-    setCie10CodeEdit(v.data.cie10_code ?? "");
-    setCie10NameEdit(v.data.cie10_name ?? "");
-    setVisitNotesEdit(v.data.notes ?? "");
-
-    // cargar inputs de signos vitales
-    setBpSys(v.data.bp_sys ?? "");
-    setBpDia(v.data.bp_dia ?? "");
-    setHr(v.data.hr ?? "");
-    setSpo2(v.data.spo2 ?? "");
-    setTempC(v.data.temp_c ?? "");
-    setWeightKg(v.data.weight_kg ?? "");
-    setHeightCm(v.data.height_cm ?? "");
-    setPediatricPercentile(v.data.pediatric_percentile ?? "");
-
-    // 3) Certificate (si existe)
-    const c = await supabase
-      .from("certificates")
-      .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, include_notes, notes, title, body, visit_id, patient_id")
-      .eq("visit_id", visitId)
-      .maybeSingle();
-
-    if (c.error) {
-      console.error(c.error);
-    } else if (c.data) {
-      setCertId(c.data.id);
-      setCertDate(c.data.date || new Date().toISOString());
-
-      setRestFrom(c.data.rest_from ? String(c.data.rest_from) : "");
-      setRestTo(c.data.rest_to ? String(c.data.rest_to) : "");
-
-      setEntity(c.data.entity ?? "");
-      setPosition(c.data.position ?? "");
-      setAddress(c.data.address ?? "");
-      setEmail(c.data.email ?? "");
-      setIncludeNotes(!!c.data.include_notes);
-      setNotes(c.data.notes ?? "");
-    } else {
-      setCertId(null);
-      setCertDate(v.data.visit_date || new Date().toISOString());
-
-      // por defecto: reposo desde la fecha de visita (solo fecha)
-      const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
-      setRestFrom(visitDay);
-      setRestTo("");
-
-      setEntity("");
-      setPosition("");
-      setAddress("");
-      setEmail("");
-      setIncludeNotes(false);
-      setNotes("");
-    }
-
-    setLoading(false);
   }
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visitId]);
 
   async function saveVisitEdits() {
@@ -420,18 +459,23 @@ export default function VisitDetail() {
     };
 
     setSavingVisit(true);
-    const { error } = await supabase.from("medical_visits").update(payload).eq("id", visit.id);
-    setSavingVisit(false);
+    try {
+      const { error } = await supabase
+        .from("medical_visits")
+        .update(payload)
+        .eq("id", visit.id);
 
-    if (error) {
+      if (error) throw error;
+
+      alert("Consulta actualizada.");
+      setEditVisit(false);
+      loadAll();
+    } catch (error) {
       console.error(error);
       alert(error.message || "No se pudo guardar cambios de la consulta");
-      return;
+    } finally {
+      setSavingVisit(false);
     }
-
-    alert("Consulta actualizada.");
-    setEditVisit(false);
-    loadAll();
   }
 
   function cancelVisitEdits() {
@@ -442,6 +486,47 @@ export default function VisitDetail() {
     setCie10NameEdit(visit.cie10_name ?? "");
     setVisitNotesEdit(visit.notes ?? "");
     setEditVisit(false);
+  }
+
+  // Función para guardar diagnósticos múltiples
+  async function saveDiagnoses() {
+    if (!visit) return;
+    if (savingDiags) return;
+
+    setSavingDiags(true);
+
+    try {
+      // 1) borrar anteriores
+      const del = await supabase
+        .from("medical_visit_diagnoses")
+        .delete()
+        .eq("visit_id", visit.id);
+
+      if (del.error) throw del.error;
+
+      // 2) insertar nuevos
+      if (diags.length > 0) {
+        const payload = diags.map((d) => ({
+          visit_id: visit.id,
+          cie10_code: d.code,
+          cie10_name: d.name,
+        }));
+
+        const ins = await supabase
+          .from("medical_visit_diagnoses")
+          .insert(payload);
+
+        if (ins.error) throw ins.error;
+      }
+
+      alert("Diagnósticos guardados.");
+      loadAll();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "No se pudo guardar diagnósticos");
+    } finally {
+      setSavingDiags(false);
+    }
   }
 
   async function saveVitals() {
@@ -466,17 +551,22 @@ export default function VisitDetail() {
     };
 
     setSavingVitals(true);
-    const { error } = await supabase.from("medical_visits").update(payload).eq("id", visit.id);
-    setSavingVitals(false);
+    try {
+      const { error } = await supabase
+        .from("medical_visits")
+        .update(payload)
+        .eq("id", visit.id);
 
-    if (error) {
+      if (error) throw error;
+
+      alert("Signos vitales guardados.");
+      loadAll();
+    } catch (error) {
       console.error(error);
       alert(error.message || "No se pudo guardar signos vitales");
-      return;
+    } finally {
+      setSavingVitals(false);
     }
-
-    alert("Signos vitales guardados.");
-    loadAll();
   }
 
   async function saveCertificate() {
@@ -491,12 +581,13 @@ export default function VisitDetail() {
       return;
     }
 
-    const diag =
-      visit.cie10_code && visit.cie10_name
+    // Formatear diagnósticos múltiples para certificado
+    const diagText = diags.length > 0 
+      ? diags.map(d => `${d.name || d.code} (${d.code})`).join("; ")
+      : (visit.cie10_code && visit.cie10_name)
         ? `${visit.cie10_name} CIE10 (${visit.cie10_code})`
         : visit.cie10_name || visit.cie10_code || "-";
 
-    // Calcular fechas para el reposo
     const startISO = restFrom;
     const endISO = calcEndDateInclusive(startISO, daysRestComputed);
     
@@ -516,7 +607,7 @@ export default function VisitDetail() {
       "",
       `Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula || "-"}, fue atendido por:`,
       "",
-      `Diagnóstico: ${diag}`,
+      `Diagnóstico: ${diagText}`,
       `Numero de historia clínica: ${patient.cedula || "-"}`,
       `Lugar de atención: ${clinicName}`,
       `Contingencia: ${contingency}`,
@@ -539,12 +630,9 @@ export default function VisitDetail() {
       date: certDate ? new Date(certDate).toISOString() : new Date().toISOString(),
       title: "CERTIFICADO MÉDICO",
       body: baseBody,
-
-      // guardamos ambos:
       days_rest: Number(daysRestComputed || 0),
       rest_from: restFrom || null,
       rest_to: restTo || null,
-
       notes: notes || null,
       include_notes: !!includeNotes,
       entity: entity || null,
@@ -553,29 +641,31 @@ export default function VisitDetail() {
       email: email || null,
     };
 
-    const up = await supabase
-      .from("certificates")
-      .upsert(payload, { onConflict: "visit_id" })
-      .select("id")
-      .single();
+    try {
+      // IMPORTANTE: Con la restricción UNIQUE en visit_id, el upsert funcionará automáticamente
+      const { data, error } = await supabase
+        .from("certificates")
+        .upsert(payload)
+        .select("id")
+        .single();
 
-    if (up.error) {
-      console.error(up.error);
-      alert(up.error.message || "No se pudo guardar el certificado");
-      return;
+      if (error) throw error;
+
+      setCertId(data.id);
+      alert("Certificado guardado.");
+      loadAll();
+    } catch (error) {
+      console.error("Error guardando certificado:", error);
+      alert(error.message || "No se pudo guardar el certificado");
     }
-
-    setCertId(up.data.id);
-    alert("Certificado guardado.");
-    loadAll();
   }
 
   function printPDF() {
     const node = printRef.current;
     if (!node) return;
 
-    const LOGO_TOP = "/logo-top.png";      // public/logo-top.png
-    const LOGO_WM = "/logo-watermark.png"; // public/logo-watermark.png
+    const LOGO_TOP = "/logo-top.png";
+    const LOGO_WM = "/logo-watermark.png";
 
     const html = node.innerHTML;
     const w = window.open("", "_blank", "width=900,height=1200");
@@ -589,8 +679,18 @@ export default function VisitDetail() {
   <meta charset="utf-8" />
   <title>Certificado</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-    .paper { width: 800px; margin: 0 auto; position: relative; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 8px;
+      color: #111;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+    .paper { 
+      width: 600px; 
+      margin: 0 auto; 
+      position: relative; 
+    }
 
     .watermark {
       position: absolute;
@@ -598,33 +698,62 @@ export default function VisitDetail() {
       background-image: url("${LOGO_WM}");
       background-repeat: no-repeat;
       background-position: center;
-      background-size: 560px auto;
-      opacity: 0.35;
+      background-size: 500px auto;
+      opacity: 0.3;
       pointer-events: none;
       z-index: 0;
     }
 
-    .content { position: relative; z-index: 1; }
+    .content { 
+      position: relative; 
+      z-index: 1; 
+    }
 
     .headerRow {
-      display:flex;
+      display: flex;
       justify-content: space-between;
-      align-items:flex-start;
-      gap: 16px;
-      margin-bottom: 8px;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 4px;
     }
 
     .logoTop {
-      height: 150px;
+      height: 120px;
       object-fit: contain;
     }
 
-    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    * { 
+      -webkit-print-color-adjust: exact; 
+      print-color-adjust: exact; 
+    }
 
     @media print {
-      body { padding: 0; }
-      .paper { width: auto; margin: 0; }
+      body { 
+        padding: 0; 
+        margin: 0;
+      }
+      .paper { 
+        width: auto; 
+        margin: 0; 
+        padding: 8mm;
+      }
     }
+    
+    .pdfHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 0 0 4mm 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .pdfHeader img {
+      height: 16mm;
+      object-fit: contain;
+    }
+
   </style>
 </head>
 <body>
@@ -633,7 +762,6 @@ export default function VisitDetail() {
 
     <div class="content">
       <div class="headerRow">
-        <img class="logoTop" src="${LOGO_TOP}" alt="Logo" />
       </div>
 
       ${html}
@@ -651,14 +779,8 @@ export default function VisitDetail() {
   if (loading) return <div className="mm-empty">Cargando consulta...</div>;
   if (!visit || !patient) return <div className="mm-empty">No se encontró la consulta.</div>;
 
-  const diagLabel =
-    visit.cie10_code && visit.cie10_name
-      ? `${visit.cie10_name} (${visit.cie10_code})`
-      : visit.cie10_name || visit.cie10_code || "-";
-
   const age = calcAge(patient.birthdate) ?? patient.age ?? null;
   const isChild = age !== null ? Number(age) < 10 : false;
-
   const bmiLive = isChild ? null : calcBMI(weightKg, heightCm);
   const status = classifyVitals({
     bp_sys: bpSys,
@@ -711,7 +833,7 @@ export default function VisitDetail() {
           {!editVisit ? (
             <>
               <div><b>Motivo:</b> {visit.reason || "-"}</div>
-              <div><b>Diagnóstico (CIE10):</b> {diagLabel}</div>
+              <div><b>Diagnóstico:</b> {formatDiagnosesForDisplay(diags)}</div>
               <div><b>Notas de consulta:</b> {visit.notes || "-"}</div>
             </>
           ) : (
@@ -738,26 +860,24 @@ export default function VisitDetail() {
                 </div>
               </div>
 
-              <div className="mm-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 (código)</div>
-                  <input
-                    className="mm-input"
-                    value={cie10CodeEdit}
-                    onChange={(e) => setCie10CodeEdit(e.target.value)}
-                    disabled={savingVisit}
-                    placeholder="Ej: J02.9"
-                  />
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>CIE10 (nombre)</div>
-                  <input
-                    className="mm-input"
-                    value={cie10NameEdit}
-                    onChange={(e) => setCie10NameEdit(e.target.value)}
-                    disabled={savingVisit}
-                    placeholder="Ej: Faringitis aguda, no especificada"
-                  />
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>Diagnóstico CIE10 (código y nombre)</div>
+                <input
+                  className="mm-input"
+                  value={cie10CodeEdit}
+                  onChange={(e) => setCie10CodeEdit(e.target.value)}
+                  disabled={savingVisit}
+                  placeholder="Ej: J02.9"
+                />
+                <input
+                  className="mm-input"
+                  value={cie10NameEdit}
+                  onChange={(e) => setCie10NameEdit(e.target.value)}
+                  disabled={savingVisit}
+                  placeholder="Ej: Faringitis aguda, no especificada"
+                />
+                <div className="mm-hint" style={{ margin: 0 }}>
+                  Nota: Para diagnósticos múltiples usa la sección "Diagnósticos (CIE10)" más abajo
                 </div>
               </div>
 
@@ -791,6 +911,26 @@ export default function VisitDetail() {
               },
               isChild
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sección de Diagnósticos Múltiples */}
+      <div className="mm-card">
+        <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
+          <div className="mm-cardTitle">Diagnósticos (CIE10)</div>
+          <div className="mm-chip">{savingDiags ? "Guardando..." : `${diags.length} seleccionados`}</div>
+        </div>
+
+        <div style={{ padding: 14, display: "grid", gap: 10 }}>
+          <Cie10MultiPicker selected={diags} onChange={setDiags} />
+
+          <button className="mm-btn" type="button" onClick={saveDiagnoses} disabled={savingDiags}>
+            Guardar diagnósticos
+          </button>
+
+          <div className="mm-hint" style={{ margin: 0 }}>
+            Puedes agregar 3, 4 o 5 diagnósticos. Se guardan en la tabla medical_visit_diagnoses.
           </div>
         </div>
       </div>
@@ -985,9 +1125,23 @@ export default function VisitDetail() {
 
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
-              <div className="head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                <div />
-                <div style={{ color: "#333", fontSize: 12, lineHeight: 1.25, textAlign: "right" }}>
+              <div
+                className="pdfHeader"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <img
+                  src="/logo-top.png"
+                  alt="Logo"
+                  style={{ height: 55, objectFit: "contain" }}
+                />
+
+                <div style={{ color: "#333", fontSize: 8.5, lineHeight: 1.15, textAlign: "right" }}>
                   <div style={{ fontWeight: 900 }}>{doctor.headerLine1}</div>
                   <div>{doctor.headerLine2}</div>
                   <div>{doctor.headerLine3}</div>
@@ -998,14 +1152,18 @@ export default function VisitDetail() {
                 </div>
               </div>
 
-              <div style={{ textAlign: "center", fontWeight: 900, margin: "18px 0 16px" }}>CERTIFICADO MEDICO</div>
+              <div style={{ textAlign: "center", fontWeight: 900, margin: "12px 0 10px" }}>CERTIFICADO MEDICO</div>
 
-              <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+              <div style={{ fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
 {`A quien interese,
 
 Por medio de la presente CERTIFICO que el paciente ${patient.name} con CI. ${patient.cedula || "-"}, fue atendido por:
 
-Diagnostico: ${visit.cie10_name ? visit.cie10_name : "-"} CIE10 (${visit.cie10_code ? visit.cie10_code : "-"})
+Diagnostico: ${diags.length > 0 
+  ? diags.map(d => `${d.name || d.code} (${d.code})`).join("; ")
+  : (visit.cie10_code && visit.cie10_name)
+    ? `${visit.cie10_name} CIE10 (${visit.cie10_code})`
+    : visit.cie10_name || visit.cie10_code || "-"}
 
 Numero de historia clinica: ${patient.cedula || "-"}
 
@@ -1032,9 +1190,10 @@ Correo electronico: ${email || "-"}
 Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesado hacer uso del presente certificado en tramites pertinentes.`}
               </div>
 
-              <div style={{ marginTop: 22, textAlign: "center" }}>
-                <div style={{ marginTop: 18 }}>Atentamente</div>
-                <div style={{ margin: "18px 0", borderTop: "1px solid #ddd" }}></div>
+              <div style={{ marginTop: 16, textAlign: "center" }}>
+                <div style={{ marginTop: 12 }}>Atentamente</div>
+                <br />
+                <div style={{ margin: "12px 0", borderTop: "1px solid #ddd" }}></div>
                 <div style={{ fontWeight: 900 }}>{doctor.fullName}</div>
                 <div style={{ fontWeight: 900 }}>{doctor.specialty}</div>
                 <div>CEDULA: {doctor.cedula}</div>
@@ -1048,7 +1207,7 @@ Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesa
         </div>
       </div>
 
-      {/* Modal guía OMS (manual) */}
+      {/* Modal guía OMS */}
       {showOmsModal && (
         <div
           onClick={() => setShowOmsModal(false)}

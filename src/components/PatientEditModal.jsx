@@ -17,6 +17,7 @@ function toCSV(arr) {
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
+
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
 
@@ -24,8 +25,31 @@ function calcAgeFromBirthdate(birthdate) {
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  // 👇 Para bebés, devolvemos 0 (no rompe nada)
   return age >= 0 ? age : null;
 }
+
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
+  return `${years} año(s)`;
+}
+
 
 export default function PatientEditModal({ open, patient, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
@@ -51,7 +75,11 @@ export default function PatientEditModal({ open, patient, onClose, onSaved }) {
     setNotes(patient.notes || "");
   }, [open, patient]);
 
-  const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
+const age = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
+
+useEffect(() => {
+  // aquí solo efectos secundarios
+}, [age]);
 
   const canSave = useMemo(() => {
     if (!patient?.id) return false;
@@ -60,11 +88,15 @@ export default function PatientEditModal({ open, patient, onClose, onSaved }) {
     const hasCedula = cedula.trim().length >= 8;
     const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
 
-    let ageOk = true;
-    if (!birthdate && ageManual.trim() !== "") {
-      const n = Number(ageManual);
-      ageOk = Number.isFinite(n) && n >= 0 && n <= 130;
-    }
+    const canSubmit = useMemo(() => {
+  const hasName = name.trim().length >= 3;
+
+  // cédula ya es opcional
+  const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
+
+  return hasName && hasBirthOrAge;
+}, [name, birthdate, ageManual]);
+
 
     return hasName && hasCedula && hasBirthOrAge && ageOk && !saving;
   }, [patient, name, cedula, birthdate, ageManual, saving]);
