@@ -294,13 +294,13 @@ export default function VisitDetail() {
   // Campos fijos
   const clinicName = "Consultorio médico MIC MEDIC";
   const contingency = "Enfermedad general";
-  const attentionType = "Medicina general";
+  const attentionType = "Medicina Ocupacional - Medicina general";
   const treatment = "Farmacológico";
 
   // Datos del médico
   const doctor = {
     fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
-    specialty: "MÉDICO GENERAL",
+    specialty: "MEDICINA OCUPACIONAL - MEDICINA GENERAL",
     cedula: "050333534-1",
     regMedico: "0503335341 - 1027 - 2023 - 2599595",
     phone: "0984340286",
@@ -309,7 +309,7 @@ export default function VisitDetail() {
     headerLine1: "Esp. Daniela Romo",
     headerLine2: "Especialista en Medicina Ocupacional",
     headerLine3: "Msc. en Prevención de Riesgos Laborales",
-    headerLine4: "MEDICINA GENERAL",
+    headerLine4: "MEDICINA OCUPACIONAL - MEDICINA GENERAL",
   };
 
   const daysRestComputed = useMemo(() => {

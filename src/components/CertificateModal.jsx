@@ -145,7 +145,7 @@ export default function CertificateModal({ open, onClose, visit, patient }) {
     clinic_city: "Salcedo - ECUADOR",
 
     doctor_name: "MED. ____________",
-    doctor_specialty: "MEDICINA GENERAL",
+    doctor_specialty: "MEDICINA OCUPACIONAL - MEDICINA GENERAL",
     doctor_cedula: "",
     doctor_reg: "",
     doctor_phone: "",
@@ -156,7 +156,7 @@ export default function CertificateModal({ open, onClose, visit, patient }) {
     patient_address: "",
 
     contingency: "Enfermedad general",
-    care_type: "Medicina general",
+    care_type: "Medicina Ocupacional - Medicina general",
     treatment: "Farmacológico",
 
     rest_days: "",

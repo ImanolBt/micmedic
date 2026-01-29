@@ -40,7 +40,7 @@ export function openCertificatePrint({ patient, visit, profile }) {
   // Defaults (si vienen vacíos)
   const place = visit.place || "Consultorio médico MIC MEDIC";
   const contingency = visit.contingency || "Enfermedad general";
-  const attentionType = visit.attention_type || "Medicina general";
+  const attentionType = visit.attention_type || "Medicina Ocupacional - Medicina general";
   const treatment = visit.treatment || "Farmacológico";
 
   // Extra opcional (si lo llenas)
@@ -53,7 +53,7 @@ export function openCertificatePrint({ patient, visit, profile }) {
   // Perfil médico
   const clinicName = profile?.clinic_name || "MIC MEDIC";
   const doctorName = profile?.doctor_name || "Med.";
-  const specialty = profile?.specialty || "MEDICINA GENERAL";
+  const specialty = profile?.specialty || "MEDICINA OCUPACIONAL - MEDICINA GENERAL";
   const extraTitles = profile?.extra_titles || "";
   const doctorId = profile?.doctor_id || "";
   const regMedico = profile?.reg_medico || "";
