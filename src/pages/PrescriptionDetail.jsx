@@ -172,8 +172,9 @@ export default function PrescriptionDetail() {
     const node = printRef.current;
     if (!node) return;
 
-    const LOGO_TOP = "/logo-top.png";
-    const LOGO_WM = "/logo-watermark.png";
+    // ✅ SOLUCIÓN 1: Usar rutas absolutas
+    const LOGO_TOP = `${window.location.origin}/logo-top.png`;
+    const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
 
     // Obtener solo el contenido principal SIN la línea de firma
     const tempDiv = document.createElement('div');
@@ -223,7 +224,13 @@ export default function PrescriptionDetail() {
       gap: 16px;
       margin-bottom: 8px;
     }
-    .logoTop { height: 85px; object-fit: contain; }
+    /* ✅ SOLUCIÓN 2: Asegurar que las imágenes se muestren */
+    .logoTop { 
+      height: 70px; 
+      object-fit: contain;
+      display: block !important;
+      visibility: visible !important;
+    }
 
     /* Estilos originales */
     .top { display:flex; justify-content: space-between; gap: 12px; align-items:flex-start; }
@@ -266,8 +273,12 @@ export default function PrescriptionDetail() {
       line-height: 1.3;
     }
     
-    /* Imprimir fondos */
-    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* ✅ SOLUCIÓN 3: Forzar impresión de fondos e imágenes */
+    * { 
+      -webkit-print-color-adjust: exact !important; 
+      print-color-adjust: exact !important; 
+      color-adjust: exact !important;
+    }
 
     @media print { 
       body { padding: 0; } 
@@ -275,6 +286,18 @@ export default function PrescriptionDetail() {
       .signature-section {
         margin-top: 50px;
         page-break-inside: avoid;
+      }
+      /* ✅ SOLUCIÓN 4: Forzar visualización de imágenes en impresión */
+      img, .logoTop {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      .watermark {
+        display: block !important;
+        visibility: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
     }
   </style>
@@ -285,7 +308,7 @@ export default function PrescriptionDetail() {
 
     <div class="content">
       <div class="headerRow">
-        <img class="logoTop" src="${LOGO_TOP}" alt="Logo" />
+        <img class="logoTop" src="${LOGO_TOP}" alt="Logo MicMEDIC" />
         <div class="muted" style="text-align:right;">
           <div style="font-weight:900;">${doctor.fullName}</div>
           <div>${doctor.specialty}</div>
@@ -316,8 +339,43 @@ export default function PrescriptionDetail() {
 </html>
     `);
     w.document.close();
-    w.focus();
-    w.print();
+
+    // ✅ SOLUCIÓN 5: Esperar a que las imágenes carguen antes de imprimir
+    const images = w.document.querySelectorAll('img');
+    let loadedCount = 0;
+    const totalImages = images.length;
+
+    function checkAndPrint() {
+      loadedCount++;
+      if (loadedCount >= totalImages) {
+        // ✅ SOLUCIÓN 6: Dar tiempo extra para renderizado completo
+        setTimeout(() => {
+          w.focus();
+          w.print();
+        }, 500);
+      }
+    }
+
+    if (totalImages === 0) {
+      // No hay imágenes, imprimir directamente
+      setTimeout(() => {
+        w.focus();
+        w.print();
+      }, 300);
+    } else {
+      // Esperar a que todas las imágenes carguen
+      images.forEach(img => {
+        if (img.complete) {
+          checkAndPrint();
+        } else {
+          img.onload = checkAndPrint;
+          img.onerror = () => {
+            console.warn('Error cargando imagen:', img.src);
+            checkAndPrint(); // Continuar aunque falle
+          };
+        }
+      });
+    }
   }
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
