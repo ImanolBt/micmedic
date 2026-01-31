@@ -197,7 +197,8 @@ export default function PatientDetail() {
           <div>
             <div className="mm-cardTitle">{patient.name}</div>
             <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Cédula: <b>{patient.cedula}</b> · Tel: <b>{patient.phone || "-"}</b>
+              Cédula: <b>{patient.cedula}</b> ·
+               Tel: <b>{patient.phone || "-"}</b>
             </div>
           </div>
 

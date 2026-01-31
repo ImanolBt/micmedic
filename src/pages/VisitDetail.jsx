@@ -9,7 +9,7 @@ import Cie10MultiPicker from "../components/Cie10MultiPicker";
  * Tablas:
  * - medical_visits (incluye signos vitales)
  * - patients
- * - certificates (rest_from, rest_to)
+ * - certificates (rest_from, rest_to, contact_phone)
  * - medical_visit_diagnoses (diagnósticos múltiples)
  */
 
@@ -288,6 +288,7 @@ export default function VisitDetail() {
   const [position, setPosition] = useState("");
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const [includeNotes, setIncludeNotes] = useState(false);
   const [notes, setNotes] = useState("");
 
@@ -388,10 +389,10 @@ export default function VisitDetail() {
         setDiags((d.data || []).map((x) => ({ code: x.cie10_code, name: x.cie10_name })));
       }
 
-      // 4) Certificate (si existe) - ACTUALIZADO según nueva estructura
+      // 4) Certificate (si existe) - ACTUALIZADO con contact_phone
       const c = await supabase
         .from("certificates")
-        .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, include_notes, notes, title, body, visit_id, patient_id, created_at, created_by")
+        .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, contact_phone, include_notes, notes, title, body, visit_id, patient_id, created_at, created_by")
         .eq("visit_id", visitId)
         .maybeSingle();
 
@@ -406,6 +407,7 @@ export default function VisitDetail() {
         setPosition(c.data.position ?? "");
         setAddress(c.data.address ?? "");
         setEmail(c.data.email ?? "");
+        setContactPhone(c.data.contact_phone ?? "");
         setIncludeNotes(!!c.data.include_notes);
         setNotes(c.data.notes ?? "");
       } else {
@@ -419,6 +421,7 @@ export default function VisitDetail() {
         setPosition("");
         setAddress("");
         setEmail("");
+        setContactPhone("");
         setIncludeNotes(false);
         setNotes("");
       }
@@ -620,6 +623,7 @@ export default function VisitDetail() {
       `Cargo: ${position || "-"}`,
       `Domicilio: ${address || "-"}`,
       `Correo electrónico: ${email || "-"}`,
+      `Teléfono de contacto: ${contactPhone || "-"}`,
       "",
       "Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesado hacer uso del presente certificado en trámites pertinentes.",
     ].join("\n");
@@ -639,6 +643,7 @@ export default function VisitDetail() {
       position: position || null,
       address: address || null,
       email: email || null,
+      contact_phone: contactPhone.trim() || null,
     };
 
     try {
@@ -1072,6 +1077,12 @@ export default function VisitDetail() {
               <input className="mm-input" placeholder="Cargo (ej: Docente)" value={position} onChange={(e) => setPosition(e.target.value)} />
               <input className="mm-input" placeholder="Domicilio" value={address} onChange={(e) => setAddress(e.target.value)} />
               <input className="mm-input" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input
+                className="mm-input"
+                placeholder="Teléfono de contacto"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+              />
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", paddingTop: 4 }}>
                 <input
@@ -1186,6 +1197,8 @@ Cargo: ${position || "-"}
 Domicilio: ${address || "-"}
 
 Correo electronico: ${email || "-"}
+
+Telefono de contacto: ${contactPhone || "-"}
 
 Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesado hacer uso del presente certificado en tramites pertinentes.`}
               </div>

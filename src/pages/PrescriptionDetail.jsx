@@ -35,7 +35,7 @@ export default function PrescriptionDetail() {
   const doctor = {
     clinic: "MicMEDIC",
     fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
-    specialty: "MEDICINA OCUPACIONAL - MEDICINA GENERALL",
+    specialty: "MEDICINA OCUPACIONAL - MEDICINA GENERAL",
     cedula: "050333534-1",
     regMedico: "0503335341 - 1027 - 2023 - 2599595",
     phone: "0984340286",
