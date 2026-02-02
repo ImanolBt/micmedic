@@ -136,18 +136,15 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-// ===== FUNCIÓN CORREGIDA =====
 function fmtDateShortDMY(dateISO) {
   if (!dateISO) {
     const d = new Date();
     return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
   }
-  // Si es string de fecha (YYYY-MM-DD), parsearlo directamente sin zona horaria
   if (typeof dateISO === 'string' && dateISO.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [year, month, day] = dateISO.split('-').map(Number);
     return `${pad2(day)}/${pad2(month)}/${year}`;
   }
-  // Si tiene timestamp completo
   const d = new Date(dateISO);
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
@@ -198,7 +195,6 @@ function numToWordsEs(n) {
   return `${milesTxt}${r ? " " + numToWordsEs(r) : ""}`.trim();
 }
 
-// ===== FUNCIÓN CORREGIDA =====
 function dateToWordsEs(dateISO) {
   if (!dateISO) {
     const d = new Date();
@@ -210,16 +206,14 @@ function dateToWordsEs(dateISO) {
     return `${dayWords} DE ${monthName} DEL ${yearWords}`;
   }
 
-  // Si es string de fecha (YYYY-MM-DD), parsearlo directamente
   if (typeof dateISO === 'string' && dateISO.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [year, month, day] = dateISO.split('-').map(Number);
-    const monthName = MONTHS_ES[month - 1]; // month es 1-12, array es 0-11
+    const monthName = MONTHS_ES[month - 1];
     const dayWords = numToWordsEs(day);
     const yearWords = numToWordsEs(year);
     return `${dayWords} DE ${monthName} DEL ${yearWords}`;
   }
 
-  // Si tiene timestamp completo
   const d = new Date(dateISO);
   const day = d.getDate();
   const monthName = MONTHS_ES[d.getMonth()];
@@ -253,7 +247,6 @@ export default function VisitDetail() {
   const [visit, setVisit] = useState(null);
   const [patient, setPatient] = useState(null);
 
-  // ===== EDITAR CONSULTA =====
   const [editVisit, setEditVisit] = useState(false);
   const [savingVisit, setSavingVisit] = useState(false);
 
@@ -263,7 +256,6 @@ export default function VisitDetail() {
   const [cie10NameEdit, setCie10NameEdit] = useState("");
   const [visitNotesEdit, setVisitNotesEdit] = useState("");
 
-  // ===== Signos vitales =====
   const [bpSys, setBpSys] = useState("");
   const [bpDia, setBpDia] = useState("");
   const [hr, setHr] = useState("");
@@ -275,11 +267,9 @@ export default function VisitDetail() {
   const [showOmsModal, setShowOmsModal] = useState(false);
   const [savingVitals, setSavingVitals] = useState(false);
 
-  // ===== DIAGNÓSTICOS MÚLTIPLES =====
   const [diags, setDiags] = useState([]);
   const [savingDiags, setSavingDiags] = useState(false);
 
-  // ===== Certificate data (actualizado según nueva estructura) =====
   const [certId, setCertId] = useState(null);
   const [certDate, setCertDate] = useState(() => new Date().toISOString());
   const [restFrom, setRestFrom] = useState("");
@@ -292,13 +282,11 @@ export default function VisitDetail() {
   const [includeNotes, setIncludeNotes] = useState(false);
   const [notes, setNotes] = useState("");
 
-  // Campos fijos
   const clinicName = "Consultorio médico MIC MEDIC";
   const contingency = "Enfermedad general";
   const attentionType = "Medicina Ocupacional - Medicina general";
   const treatment = "Farmacológico";
 
-  // Datos del médico
   const doctor = {
     fullName: "ESP. ROMO PROCEL DANIELA JACKELINE",
     specialty: "MEDICINA OCUPACIONAL - MEDICINA GENERAL",
@@ -322,7 +310,6 @@ export default function VisitDetail() {
     return diff >= 0 ? diff + 1 : 0;
   }, [restFrom, restTo]);
 
-  // Función para formatear diagnósticos múltiples
   function formatDiagnosesForDisplay(diagnosesArray) {
     if (!diagnosesArray || diagnosesArray.length === 0) return "-";
     return diagnosesArray.map(d => 
@@ -335,7 +322,6 @@ export default function VisitDetail() {
     setLoading(true);
 
     try {
-      // 1) Visit
       const v = await supabase
         .from("medical_visits")
         .select(
@@ -346,7 +332,6 @@ export default function VisitDetail() {
 
       if (v.error) throw new Error(`Error cargando consulta: ${v.error.message}`);
 
-      // 2) Patient
       const p = await supabase
         .from("patients")
         .select("*")
@@ -358,14 +343,12 @@ export default function VisitDetail() {
       setVisit(v.data);
       setPatient(p.data);
 
-      // Cargar inputs editar consulta
       setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
       setReasonEdit(v.data.reason ?? "");
       setCie10CodeEdit(v.data.cie10_code ?? "");
       setCie10NameEdit(v.data.cie10_name ?? "");
       setVisitNotesEdit(v.data.notes ?? "");
 
-      // Cargar inputs de signos vitales
       setBpSys(v.data.bp_sys ?? "");
       setBpDia(v.data.bp_dia ?? "");
       setHr(v.data.hr ?? "");
@@ -375,7 +358,6 @@ export default function VisitDetail() {
       setHeightCm(v.data.height_cm ?? "");
       setPediatricPercentile(v.data.pediatric_percentile ?? "");
 
-      // 3) DIAGNÓSTICOS MÚLTIPLES
       const d = await supabase
         .from("medical_visit_diagnoses")
         .select("cie10_code, cie10_name")
@@ -389,7 +371,6 @@ export default function VisitDetail() {
         setDiags((d.data || []).map((x) => ({ code: x.cie10_code, name: x.cie10_name })));
       }
 
-      // 4) Certificate (si existe) - ACTUALIZADO con contact_phone
       const c = await supabase
         .from("certificates")
         .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, contact_phone, include_notes, notes, title, body, visit_id, patient_id, created_at, created_by")
@@ -411,7 +392,6 @@ export default function VisitDetail() {
         setIncludeNotes(!!c.data.include_notes);
         setNotes(c.data.notes ?? "");
       } else {
-        // No existe certificado, inicializar valores
         setCertId(null);
         setCertDate(v.data.visit_date || new Date().toISOString());
         const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
@@ -491,7 +471,6 @@ export default function VisitDetail() {
     setEditVisit(false);
   }
 
-  // Función para guardar diagnósticos múltiples
   async function saveDiagnoses() {
     if (!visit) return;
     if (savingDiags) return;
@@ -499,7 +478,6 @@ export default function VisitDetail() {
     setSavingDiags(true);
 
     try {
-      // 1) borrar anteriores
       const del = await supabase
         .from("medical_visit_diagnoses")
         .delete()
@@ -507,7 +485,6 @@ export default function VisitDetail() {
 
       if (del.error) throw del.error;
 
-      // 2) insertar nuevos
       if (diags.length > 0) {
         const payload = diags.map((d) => ({
           visit_id: visit.id,
@@ -584,7 +561,6 @@ export default function VisitDetail() {
       return;
     }
 
-    // Formatear diagnósticos múltiples para certificado
     const diagText = diags.length > 0 
       ? diags.map(d => `${d.name || d.code} (${d.code})`).join("; ")
       : (visit.cie10_code && visit.cie10_name)
@@ -625,6 +601,12 @@ export default function VisitDetail() {
       `Correo electrónico: ${email || "-"}`,
       `Teléfono de contacto: ${contactPhone || "-"}`,
       "",
+      // ✅ NOTAS ADICIONALES
+      ...(includeNotes && notes?.trim() ? [
+        "NOTAS ADICIONALES:",
+        notes.trim(),
+        "",
+      ] : []),
       "Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesado hacer uso del presente certificado en trámites pertinentes.",
     ].join("\n");
 
@@ -647,7 +629,6 @@ export default function VisitDetail() {
     };
 
     try {
-      // IMPORTANTE: Con la restricción UNIQUE en visit_id, el upsert funcionará automáticamente
       const { data, error } = await supabase
         .from("certificates")
         .upsert(payload)
@@ -669,8 +650,8 @@ export default function VisitDetail() {
     const node = printRef.current;
     if (!node) return;
 
-    const LOGO_TOP = "/logo-top.png";
-    const LOGO_WM = "/logo-watermark.png";
+    const LOGO_TOP = `${window.location.origin}/logo-top.png`;
+    const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
 
     const html = node.innerHTML;
     const w = window.open("", "_blank", "width=900,height=1200");
@@ -725,11 +706,14 @@ export default function VisitDetail() {
     .logoTop {
       height: 120px;
       object-fit: contain;
+      display: block !important;
+      visibility: visible !important;
     }
 
     * { 
-      -webkit-print-color-adjust: exact; 
-      print-color-adjust: exact; 
+      -webkit-print-color-adjust: exact !important; 
+      print-color-adjust: exact !important; 
+      color-adjust: exact !important;
     }
 
     @media print {
@@ -741,6 +725,17 @@ export default function VisitDetail() {
         width: auto; 
         margin: 0; 
         padding: 8mm;
+      }
+      img, .logoTop {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      .watermark {
+        display: block !important;
+        visibility: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
     }
     
@@ -776,8 +771,40 @@ export default function VisitDetail() {
 </html>
     `);
     w.document.close();
-    w.focus();
-    w.print();
+
+    // ✅ Esperar a que las imágenes carguen
+    const images = w.document.querySelectorAll('img');
+    let loadedCount = 0;
+    const totalImages = images.length;
+
+    function checkAndPrint() {
+      loadedCount++;
+      if (loadedCount >= totalImages) {
+        setTimeout(() => {
+          w.focus();
+          w.print();
+        }, 500);
+      }
+    }
+
+    if (totalImages === 0) {
+      setTimeout(() => {
+        w.focus();
+        w.print();
+      }, 300);
+    } else {
+      images.forEach(img => {
+        if (img.complete) {
+          checkAndPrint();
+        } else {
+          img.onload = checkAndPrint;
+          img.onerror = () => {
+            console.warn('Error cargando imagen:', img.src);
+            checkAndPrint();
+          };
+        }
+      });
+    }
   }
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
@@ -797,7 +824,6 @@ export default function VisitDetail() {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
-      {/* Header consulta */}
       <div className="mm-card">
         <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
           <div>
@@ -920,7 +946,6 @@ export default function VisitDetail() {
         </div>
       </div>
 
-      {/* Sección de Diagnósticos Múltiples */}
       <div className="mm-card">
         <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
           <div className="mm-cardTitle">Diagnósticos (CIE10)</div>
@@ -941,9 +966,7 @@ export default function VisitDetail() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        {/* Izquierda: Signos vitales + Certificado */}
         <div style={{ display: "grid", gap: 14 }}>
-          {/* Signos vitales */}
           <div className="mm-card">
             <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
               <div className="mm-cardTitle">Signos vitales</div>
@@ -1026,7 +1049,6 @@ export default function VisitDetail() {
             </div>
           </div>
 
-          {/* Certificado */}
           <div className="mm-card">
             <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
               <div className="mm-cardTitle">Certificado médico</div>
@@ -1127,7 +1149,6 @@ export default function VisitDetail() {
           </div>
         </div>
 
-        {/* Derecha: Vista previa imprimible */}
         <div className="mm-card">
           <div className="mm-cardHead">
             <div className="mm-cardTitle">Vista previa</div>
@@ -1198,7 +1219,10 @@ Domicilio: ${address || "-"}
 
 Correo electronico: ${email || "-"}
 
-Telefono de contacto: ${contactPhone || "-"}
+Telefono de contacto: ${contactPhone || "-"}${includeNotes && notes?.trim() ? `
+
+NOTAS ADICIONALES:
+${notes.trim()}` : ''}
 
 Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesado hacer uso del presente certificado en tramites pertinentes.`}
               </div>
@@ -1220,7 +1244,6 @@ Es todo en cuanto puedo certificar en honor a la verdad, autorizando al interesa
         </div>
       </div>
 
-      {/* Modal guía OMS */}
       {showOmsModal && (
         <div
           onClick={() => setShowOmsModal(false)}
