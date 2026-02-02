@@ -26,7 +26,6 @@ function calcAgeFromBirthdate(birthdate) {
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
 
-  // 👇 Para bebés, devolvemos 0 (no rompe nada)
   return age >= 0 ? age : null;
 }
 
@@ -50,7 +49,6 @@ function ageLabelFromBirthdate(birthdate) {
   return `${years} año(s)`;
 }
 
-
 export default function PatientEditModal({ open, patient, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
@@ -59,10 +57,11 @@ export default function PatientEditModal({ open, patient, onClose, onSaved }) {
   const [cedula, setCedula] = useState("");
   const [phone, setPhone] = useState("");
   const [birthdate, setBirthdate] = useState("");
-  const [ageManual, setAgeManual] = useState(""); // solo si no hay birthdate
+  const [ageManual, setAgeManual] = useState("");
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
 
+  // ✅ Cargar datos del paciente cuando se abre el modal
   useEffect(() => {
     if (!open || !patient) return;
     setName(patient.name || "");
@@ -70,49 +69,58 @@ export default function PatientEditModal({ open, patient, onClose, onSaved }) {
     setCedula(patient.cedula || "");
     setPhone(patient.phone || "");
     setBirthdate(patient.birthdate ? String(patient.birthdate).slice(0, 10) : "");
-    setAgeManual(""); // solo si no hay birthdate
+    setAgeManual(patient.age ? String(patient.age) : "");
     setAllergiesCSV(toCSV(patient.allergies || []));
     setNotes(patient.notes || "");
   }, [open, patient]);
 
-const age = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
+  // ✅ Calcular edad automáticamente desde fecha de nacimiento
+  const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
 
-useEffect(() => {
-  // aquí solo efectos secundarios
-}, [age]);
+  // ✅ Si hay fecha de nacimiento, limpiar edad manual
+  useEffect(() => {
+    if (birthdate) setAgeManual("");
+  }, [birthdate]);
 
+  // ✅ Validación de edad manual
+  const ageManualNum = useMemo(() => {
+    const s = String(ageManual || "").trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }, [ageManual]);
+
+  // ✅ Validación para habilitar guardar
   const canSave = useMemo(() => {
     if (!patient?.id) return false;
 
     const hasName = name.trim().length >= 3;
-    const hasCedula = cedula.trim().length >= 8;
-    const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
+    const hasBirthOrAge = Boolean(birthdate) || ageManualNum !== null;
 
-    const canSubmit = useMemo(() => {
-  const hasName = name.trim().length >= 3;
+    return hasName && hasBirthOrAge && !saving;
+  }, [patient, name, birthdate, ageManualNum, saving]);
 
-  // cédula ya es opcional
-  const hasBirthOrAge = Boolean(birthdate) || ageManual.trim() !== "";
-
-  return hasName && hasBirthOrAge;
-}, [name, birthdate, ageManual]);
-
-
-    return hasName && hasCedula && hasBirthOrAge && ageOk && !saving;
-  }, [patient, name, cedula, birthdate, ageManual, saving]);
+  // ✅ Valor que se muestra en el input de edad
+  const displayedAgeValue = useMemo(() => {
+    if (birthdate && autoAge !== null) return String(autoAge);
+    return String(ageManual || "");
+  }, [birthdate, autoAge, ageManual]);
 
   async function save() {
     if (!canSave) return;
 
     setSaving(true);
 
-    // Si no hay birthdate, NO guardamos age en DB (porque tu esquema recomendado no la usa)
+    // ✅ Calcular edad dentro de la función save
+    const calculatedAge = birthdate ? calcAgeFromBirthdate(birthdate) : ageManualNum;
+
     const payload = {
       name: name.trim(),
       sex,
-      cedula: cedula.trim(),
+      cedula: cedula.trim() || null,
       phone: phone.trim() || null,
-      birthdate: birthdate ? birthdate : null,
+      birthdate: birthdate || null,
+      age: calculatedAge, // ✅ Ahora funciona correctamente
       allergies: toTextArray(allergiesCSV),
       notes: notes.trim() || null,
     };
@@ -185,18 +193,25 @@ useEffect(() => {
             <input
               className="mm-input"
               type="number"
+              min={0}
+              step={1}
               placeholder="Edad (si no hay fecha)"
-              value={autoAge ?? ageManual}
+              value={displayedAgeValue}
               onChange={(e) => setAgeManual(e.target.value)}
-              disabled={saving || autoAge !== null}
-              title={autoAge !== null ? "Se calcula desde la fecha" : "Edad manual solo si no hay fecha"}
+              disabled={saving || Boolean(birthdate)}
+              title={birthdate ? "Se calcula desde la fecha de nacimiento" : "Edad manual solo si no hay fecha"}
             />
+          </div>
+
+          {/* ✅ Mostrar edad calculada */}
+          <div className="mm-hint" style={{ marginTop: -6 }}>
+            Edad calculada: <b>{birthdate ? ageLabelFromBirthdate(birthdate) : (ageManualNum !== null ? `${ageManualNum} año(s)` : "-")}</b>
           </div>
 
           <div className="mm-row">
             <input
               className="mm-input"
-              placeholder="Cédula"
+              placeholder="Cédula (opcional)"
               value={cedula}
               onChange={(e) => setCedula(e.target.value)}
               disabled={saving}
@@ -223,27 +238,24 @@ useEffect(() => {
 
           <textarea
             className="mm-input"
-            placeholder={`Alergias (separa con comas).
-Ej: Penicilina, Mariscos`}
+            placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
             value={allergiesCSV}
             onChange={(e) => setAllergiesCSV(e.target.value)}
             disabled={saving}
-            rows={4}
-            style={{ resize: "vertical", paddingTop: 12, lineHeight: 1.4, whiteSpace: "pre-wrap" }}
+            style={{ minHeight: 80, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
           />
 
           <textarea
             className="mm-input"
-            placeholder="Notas (opcional)"
+            placeholder="Notas / Evolución (opcional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={saving}
-            rows={3}
-            style={{ resize: "vertical", paddingTop: 12, lineHeight: 1.4, whiteSpace: "pre-wrap" }}
+            style={{ minHeight: 110, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
           />
 
           <div className="mm-hint" style={{ margin: 0 }}>
-            Tip: si cambias cédula, revisa que quede correcta (se usa como referencia en varios lados).
+            La cédula es opcional. Si no se conoce, el sistema permite guardar sin ese dato.
           </div>
         </div>
       </div>

@@ -20,11 +20,9 @@ function calcAgeFromBirthdate(birthdate) {
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
 
-  // ✅ Bebés: 0 años es válido
   return age >= 0 ? age : null;
 }
 
-// ✅ Etiqueta “bonita”: meses si < 1 año
 function ageLabelFromBirthdate(birthdate) {
   if (!birthdate) return "-";
   const b = new Date(birthdate);
@@ -51,8 +49,8 @@ export default function PatientForm({ onCreate, disabled }) {
   const [cedula, setCedula] = useState("");
   const [phone, setPhone] = useState("");
 
-  const [birthdate, setBirthdate] = useState(""); // YYYY-MM-DD
-  const [ageManual, setAgeManual] = useState(""); // usado solo si no hay birthdate
+  const [birthdate, setBirthdate] = useState("");
+  const [ageManual, setAgeManual] = useState("");
 
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
@@ -70,7 +68,7 @@ export default function PatientForm({ onCreate, disabled }) {
     const s = String(ageManual || "").trim();
     if (!s) return null;
     const n = Number(s);
-    return Number.isFinite(n) && n >= 0 ? n : null; // ✅ permite 0 (bebé)
+    return Number.isFinite(n) && n >= 0 ? n : null;
   }, [ageManual]);
 
   // ✅ puede enviar si: nombre ok + (fecha o edadManual válida)
@@ -95,15 +93,16 @@ export default function PatientForm({ onCreate, disabled }) {
     e.preventDefault();
     if (!canSubmit || disabled) return;
 
-    // ✅ Si no hay birthdate, igual guardas con edad manual (si tu tabla tiene campo age)
-    // Si tu tabla NO tiene campo "age", no lo mandes. Aquí lo mando solo como ejemplo:
+    // ✅ CORRECCIÓN: Calcular edad dentro de la función submit
+    const calculatedAge = birthdate ? calcAgeFromBirthdate(birthdate) : ageManualNum;
+
     const payload = {
       name: name.trim(),
       sex,
-      cedula: cedula.trim() || null, // ✅ opcional
+      cedula: cedula.trim() || null,
       phone: phone.trim() || null,
-      birthdate: birthdate ? birthdate : null,
-      // age: birthdate ? autoAge : ageManualNum, // <-- descomenta SOLO si tu tabla patients tiene columna "age"
+      birthdate: birthdate || null,
+      age: calculatedAge, // ✅ Ahora usa la variable local calculatedAge
       allergies: toTextArray(allergiesCSV),
       notes: notes.trim() || null,
     };
@@ -114,9 +113,7 @@ export default function PatientForm({ onCreate, disabled }) {
 
   // ✅ valor que se muestra en input edad
   const displayedAgeValue = useMemo(() => {
-    // si hay birthdate, mostramos autoAge (años)
     if (birthdate && autoAge !== null) return String(autoAge);
-    // si no, mostramos lo que escribe el usuario
     return String(ageManual || "");
   }, [birthdate, autoAge, ageManual]);
 
@@ -148,7 +145,7 @@ export default function PatientForm({ onCreate, disabled }) {
           placeholder="Edad (si no hay fecha)"
           value={displayedAgeValue}
           onChange={(e) => setAgeManual(e.target.value)}
-          disabled={disabled || Boolean(birthdate)} // ✅ si hay fecha, no deja editar edad manual
+          disabled={disabled || Boolean(birthdate)}
           title={birthdate ? "Se calcula desde la fecha de nacimiento" : "Edad manual solo si no hay fecha"}
         />
       </div>
