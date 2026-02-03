@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+
 const CLINIC_PHONE = "0984340286";
 
 function fmtDateLong(dateISO) {
@@ -13,7 +14,7 @@ function fmtDateShort(dateISO) {
 }
 
 export default function PrescriptionDetail() {
-  const { id } = useParams(); // /visits/:id/prescription
+  const { id } = useParams();
   const nav = useNavigate();
   const printRef = useRef(null);
 
@@ -27,7 +28,7 @@ export default function PrescriptionDetail() {
   const [visit, setVisit] = useState(null);
   const [patient, setPatient] = useState(null);
 
-  // Nota general opcional (solo UI, si quieres guardarla en DB luego te creo columna en medical_visits o tabla nueva)
+  // ✅ Esto ahora se guardará en BD
   const [rxNotes, setRxNotes] = useState("");
 
   const [items, setItems] = useState([]);
@@ -48,10 +49,10 @@ export default function PrescriptionDetail() {
     if (!visitId) return;
     setLoading(true);
 
-    // Visit
+    // ✅ IMPORTANTE: traer prescription_notes
     const v = await supabase
       .from("medical_visits")
-      .select("id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at")
+      .select("id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, prescription_notes")
       .eq("id", visitId)
       .single();
 
@@ -61,9 +62,10 @@ export default function PrescriptionDetail() {
       setLoading(false);
       return;
     }
-    setVisit(v.data);
 
-    // Patient
+    setVisit(v.data);
+    setRxNotes(v.data?.prescription_notes || ""); // ✅ Persistente
+
     const p = await supabase.from("patients").select("*").eq("id", v.data.patient_id).single();
     if (p.error) {
       console.error(p.error);
@@ -73,7 +75,6 @@ export default function PrescriptionDetail() {
     }
     setPatient(p.data);
 
-    // Items (tu esquema real: encounter_id + med + instructions)
     const it = await supabase
       .from("prescription_items")
       .select("id, encounter_id, med, instructions, sort_order")
@@ -100,10 +101,11 @@ export default function PrescriptionDetail() {
     setItems((prev) => [
       ...prev,
       {
-        id: `tmp_${crypto.randomUUID()}`,
+        id: `temp_${Date.now()}_${Math.random()}`,
         med: "",
         instructions: "",
         sort_order: prev.length + 1,
+        isNew: true,
       },
     ]);
   }
@@ -120,71 +122,49 @@ export default function PrescriptionDetail() {
     );
   }
 
+  // ✅ Guardado DEFINITIVO: medicamentos + notas
   async function savePrescription() {
     if (!visit || !patient) return;
 
-    // Limpieza y validación
     const cleaned = (items || [])
       .map((x, idx) => ({
-        ...x,
-        sort_order: idx + 1,
         med: (x.med || "").trim(),
         instructions: (x.instructions || "").trim(),
+        sort_order: idx + 1,
       }))
       .filter((x) => x.med && x.instructions);
 
-    if (cleaned.length === 0) {
-      alert("Agrega al menos 1 medicamento con indicaciones.");
-      return;
+    try {
+      // 1) Guardar notas en medical_visits (persisten siempre)
+      const { error: notesErr } = await supabase
+        .from("medical_visits")
+        .update({ prescription_notes: rxNotes?.trim() || null })
+        .eq("id", visitId);
+
+      if (notesErr) throw notesErr;
+
+      // 2) Reemplazar receta completa (delete+insert) con RPC
+      const { error: rxErr } = await supabase.rpc("replace_prescription_items", {
+        p_encounter_id: visitId,
+        p_items: cleaned, // si está vacío, deja la receta sin medicamentos
+      });
+
+      if (rxErr) throw rxErr;
+
+      alert("Receta guardada correctamente.");
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "No se pudo guardar la receta");
     }
-
-    // Estrategia simple: borrar lo anterior (solo de ESTE visitId) y reinsertar
-    const del = await supabase.from("prescription_items").delete().eq("encounter_id", visitId);
-    if (del.error) {
-      console.error(del.error);
-      alert(del.error.message || "No se pudo actualizar la receta (delete)");
-      return;
-    }
-
-    const insertPayload = cleaned.map((x) => ({
-      encounter_id: visitId,
-      med: x.med,
-      instructions: x.instructions,
-      sort_order: x.sort_order,
-    }));
-
-    const ins = await supabase
-      .from("prescription_items")
-      .insert(insertPayload)
-      .select("id, encounter_id, med, instructions, sort_order");
-
-    if (ins.error) {
-      console.error(ins.error);
-      alert(ins.error.message || "No se pudo guardar la receta");
-      return;
-    }
-
-    setItems(ins.data || []);
-    alert("Receta guardada.");
   }
 
   function printPDF() {
     const node = printRef.current;
     if (!node) return;
 
-    // ✅ SOLUCIÓN 1: Usar rutas absolutas
     const LOGO_TOP = `${window.location.origin}/logo-top.png`;
     const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
-
-    // Obtener solo el contenido principal SIN la línea de firma
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = node.innerHTML;
-    
-    // Eliminar cualquier elemento de firma que pueda estar en el printRef
-    const signatureElements = tempDiv.querySelectorAll('[style*="border-bottom"], [class*="signature"], [class*="line"]');
-    signatureElements.forEach(el => el.remove());
-    
-    const contentWithoutSignature = tempDiv.innerHTML;
 
     const w = window.open("", "_blank", "width=900,height=1200");
     if (!w) return;
@@ -200,7 +180,6 @@ export default function PrescriptionDetail() {
     body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
     .paper { width: 820px; margin: 0 auto; position: relative; }
 
-    /* Marca de agua */
     .watermark {
       position: absolute;
       inset: 0;
@@ -212,29 +191,17 @@ export default function PrescriptionDetail() {
       pointer-events: none;
       z-index: 0;
     }
-
-    /* Contenido por encima */
     .content { position: relative; z-index: 1; }
 
-    /* Header con logo */
-    .headerRow {
+    .headerRow{
       display:flex;
       justify-content: space-between;
       align-items:flex-start;
-      gap: 16px;
+      gap:16px;
       margin-bottom: 8px;
     }
-    /* ✅ SOLUCIÓN 2: Asegurar que las imágenes se muestren */
-    .logoTop { 
-      height: 70px; 
-      object-fit: contain;
-      display: block !important;
-      visibility: visible !important;
-    }
+    .logoTop{ height:70px; object-fit:contain; display:block; }
 
-    /* Estilos originales */
-    .top { display:flex; justify-content: space-between; gap: 12px; align-items:flex-start; }
-    .brand { font-weight: 900; font-size: 28px; }
     .muted { font-size: 12px; color:#333; line-height: 1.3; }
     .title { text-align:center; font-weight: 900; margin: 12px 0 14px; letter-spacing: .5px; }
     .info { font-size: 12px; line-height: 1.5; margin-bottom: 12px; }
@@ -242,70 +209,18 @@ export default function PrescriptionDetail() {
     th, td { border: 1px solid #ddd; padding: 10px; vertical-align: top; }
     th { font-size: 12px; text-align: left; }
     td { font-size: 12px; white-space: pre-wrap; }
-    .footer { margin-top: 18px; font-size: 12px; }
-    
-    /* ÚNICA SECCIÓN DE FIRMA */
-    .signature-section {
-      margin-top: 40px;
-      padding-top: 20px;
-      text-align: center;
-    }
-    .signature-line {
-      width: 300px;
-      margin: 0 auto 15px;
-      border-bottom: 1px solid #000;
-      padding-bottom: 5px;
-    }
-    .doctor-name {
-      font-size: 13px;
-      font-weight: bold;
-      margin-bottom: 3px;
-    }
-    .doctor-details {
-      font-size: 11px;
-      color: #555;
-      line-height: 1.3;
-      margin-bottom: 3px;
-    }
-    .doctor-contact {
-      font-size: 11px;
-      color: #333;
-      line-height: 1.3;
-    }
-    
-    /* ✅ SOLUCIÓN 3: Forzar impresión de fondos e imágenes */
-    * { 
-      -webkit-print-color-adjust: exact !important; 
-      print-color-adjust: exact !important; 
-      color-adjust: exact !important;
-    }
 
-    @media print { 
-      body { padding: 0; } 
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    @media print {
+      body { padding: 0; }
       .paper { width: auto; margin: 0; }
-      .signature-section {
-        margin-top: 50px;
-        page-break-inside: avoid;
-      }
-      /* ✅ SOLUCIÓN 4: Forzar visualización de imágenes en impresión */
-      img, .logoTop {
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-      }
-      .watermark {
-        display: block !important;
-        visibility: visible !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
     }
   </style>
 </head>
 <body>
   <div class="paper">
     <div class="watermark"></div>
-
     <div class="content">
       <div class="headerRow">
         <img class="logoTop" src="${LOGO_TOP}" alt="Logo MicMEDIC" />
@@ -317,65 +232,15 @@ export default function PrescriptionDetail() {
         </div>
       </div>
 
-      ${contentWithoutSignature}
-
-      <!-- ÚNICA SECCIÓN DE FIRMA (se añade aquí, no está duplicada) -->
-      <div class="signature-section">
-        <div class="signature-line"></div>
-        <div class="doctor-name">${doctor.fullName}</div>
-        <div class="doctor-details">
-          ${doctor.specialty}<br>
-          Cédula Profesional: ${doctor.cedula}<br>
-          Registro Médico: ${doctor.regMedico}
-        </div>
-        <div class="doctor-contact">
-          ${doctor.address}<br>
-          Teléfono: ${CLINIC_PHONE} | Email: ${doctor.email}
-        </div>
-      </div>
+      ${node.innerHTML}
     </div>
   </div>
 </body>
 </html>
     `);
     w.document.close();
-
-    // ✅ SOLUCIÓN 5: Esperar a que las imágenes carguen antes de imprimir
-    const images = w.document.querySelectorAll('img');
-    let loadedCount = 0;
-    const totalImages = images.length;
-
-    function checkAndPrint() {
-      loadedCount++;
-      if (loadedCount >= totalImages) {
-        // ✅ SOLUCIÓN 6: Dar tiempo extra para renderizado completo
-        setTimeout(() => {
-          w.focus();
-          w.print();
-        }, 500);
-      }
-    }
-
-    if (totalImages === 0) {
-      // No hay imágenes, imprimir directamente
-      setTimeout(() => {
-        w.focus();
-        w.print();
-      }, 300);
-    } else {
-      // Esperar a que todas las imágenes carguen
-      images.forEach(img => {
-        if (img.complete) {
-          checkAndPrint();
-        } else {
-          img.onload = checkAndPrint;
-          img.onerror = () => {
-            console.warn('Error cargando imagen:', img.src);
-            checkAndPrint(); // Continuar aunque falle
-          };
-        }
-      });
-    }
+    w.focus();
+    w.print();
   }
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
@@ -396,7 +261,7 @@ export default function PrescriptionDetail() {
           <div>
             <div className="mm-cardTitle">Receta</div>
             <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Paciente: <b>{patient.name}</b> · CI: <b>{patient.cedula}</b> · Fecha:{" "}
+              Paciente: <b>{patient.name}</b> · CI: <b>{patient.cedula || "-"}</b> · Fecha:{" "}
               <b>{new Date(rxDateISO).toLocaleString("es-EC")}</b>
             </div>
           </div>
@@ -415,7 +280,6 @@ export default function PrescriptionDetail() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        {/* Editor */}
         <div className="mm-card">
           <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
             <div className="mm-cardTitle">Medicamentos</div>
@@ -450,10 +314,10 @@ export default function PrescriptionDetail() {
             <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
               {items.length === 0 && <div className="mm-empty">Aún no hay medicamentos. Clic en "Añadir medicamento".</div>}
 
-              {items.map((it) => (
+              {items.map((it, idx) => (
                 <div key={it.id} className="mm-item" style={{ cursor: "default" }}>
                   <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                    <div className="mm-itemName">Medicamento #{(it.sort_order ?? 1)}</div>
+                    <div className="mm-itemName">Medicamento #{idx + 1}</div>
                     <button className="mm-btn mm-btn--ghost" type="button" onClick={() => removeItem(it.id)}>
                       Quitar
                     </button>
@@ -481,7 +345,6 @@ export default function PrescriptionDetail() {
           </div>
         </div>
 
-        {/* Preview imprimible */}
         <div className="mm-card">
           <div className="mm-cardHead">
             <div className="mm-cardTitle">Vista previa (Receta)</div>
@@ -490,19 +353,17 @@ export default function PrescriptionDetail() {
 
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
-              <div className="top">
-                <div className="muted" style={{ textAlign: "right" }}>
-                  <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
-                  <div>Tel: {CLINIC_PHONE}</div>
-                  <div>{doctor.email}</div>
-                </div>
+              <div className="muted" style={{ textAlign: "right" }}>
+                <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
+                <div>Tel: {CLINIC_PHONE}</div>
+                <div>{doctor.email}</div>
               </div>
 
               <div className="title">RECETA MÉDICA</div>
 
               <div className="info">
                 <div><b>Paciente:</b> {patient.name}</div>
-                <div><b>CI:</b> {patient.cedula} &nbsp;&nbsp; <b>Tel:</b> {patient.phone || "-"}</div>
+                <div><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {CLINIC_PHONE}</div>
                 <div><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
                 <div><b>Diagnóstico (CIE10):</b> {diag}</div>
               </div>
@@ -535,15 +396,12 @@ export default function PrescriptionDetail() {
               </table>
 
               {rxNotes?.trim() ? (
-                <div className="footer">
+                <div className="footer" style={{ marginTop: 12, fontSize: 12 }}>
                   <b>Notas:</b> {rxNotes}
                 </div>
               ) : null}
 
-              {/* NOTA: No agregamos línea de firma aquí, solo espacio para ella */}
-              <div style={{ marginTop: "80px" }}>
-                {/* Solo espacio vacío donde irá la firma */}
-              </div>
+              <div style={{ marginTop: "60px" }} />
             </div>
           </div>
         </div>
