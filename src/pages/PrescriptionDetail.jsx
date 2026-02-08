@@ -28,9 +28,7 @@ export default function PrescriptionDetail() {
   const [visit, setVisit] = useState(null);
   const [patient, setPatient] = useState(null);
 
-  // ✅ Esto ahora se guardará en BD
   const [rxNotes, setRxNotes] = useState("");
-
   const [items, setItems] = useState([]);
 
   const doctor = {
@@ -49,10 +47,10 @@ export default function PrescriptionDetail() {
     if (!visitId) return;
     setLoading(true);
 
-    // ✅ IMPORTANTE: traer prescription_notes
+    // ✅ Cargar visita
     const v = await supabase
       .from("medical_visits")
-      .select("id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, prescription_notes")
+      .select("id, patient_id, visit_date, reason, notes, created_at, prescription_notes")
       .eq("id", visitId)
       .single();
 
@@ -63,9 +61,15 @@ export default function PrescriptionDetail() {
       return;
     }
 
-    setVisit(v.data);
-    setRxNotes(v.data?.prescription_notes || ""); // ✅ Persistente
+    // ✅ Cargar TODOS los diagnósticos desde tabla separada
+    const diagRes = await supabase
+      .from("medical_visit_diagnoses")
+      .select("cie10_code, cie10_name")
+      .eq("visit_id", visitId);
 
+    const diagnoses = diagRes.data || [];
+
+    // ✅ Cargar paciente
     const p = await supabase.from("patients").select("*").eq("id", v.data.patient_id).single();
     if (p.error) {
       console.error(p.error);
@@ -75,6 +79,11 @@ export default function PrescriptionDetail() {
     }
     setPatient(p.data);
 
+    // ✅ Guardar visita con diagnósticos incluidos
+    setVisit({ ...v.data, diagnoses });
+    setRxNotes(v.data?.prescription_notes || "");
+
+    // ✅ Cargar items de prescripción
     const it = await supabase
       .from("prescription_items")
       .select("id, encounter_id, med, instructions, sort_order")
@@ -122,7 +131,6 @@ export default function PrescriptionDetail() {
     );
   }
 
-  // ✅ Guardado DEFINITIVO: medicamentos + notas
   async function savePrescription() {
     if (!visit || !patient) return;
 
@@ -135,7 +143,6 @@ export default function PrescriptionDetail() {
       .filter((x) => x.med && x.instructions);
 
     try {
-      // 1) Guardar notas en medical_visits (persisten siempre)
       const { error: notesErr } = await supabase
         .from("medical_visits")
         .update({ prescription_notes: rxNotes?.trim() || null })
@@ -143,10 +150,9 @@ export default function PrescriptionDetail() {
 
       if (notesErr) throw notesErr;
 
-      // 2) Reemplazar receta completa (delete+insert) con RPC
       const { error: rxErr } = await supabase.rpc("replace_prescription_items", {
         p_encounter_id: visitId,
-        p_items: cleaned, // si está vacío, deja la receta sin medicamentos
+        p_items: cleaned,
       });
 
       if (rxErr) throw rxErr;
@@ -160,42 +166,31 @@ export default function PrescriptionDetail() {
   }
 
   function printPDF() {
-  const node = printRef.current;
-  if (!node) return;
+    const node = printRef.current;
+    if (!node) return;
 
-  const LOGO_TOP = `${window.location.origin}/logo-top.png`;
-  const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
+    const LOGO_TOP = `${window.location.origin}/logo-top.png`;
+    const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
 
-  const html = node.innerHTML;
+    const html = node.innerHTML;
 
-  const w = window.open("", "_blank", "width=900,height=1200");
-  if (!w) return;
+    const w = window.open("", "_blank", "width=900,height=1200");
+    if (!w) return;
 
-  w.document.open();
-  w.document.write(`
+    w.document.open();
+    w.document.write(`
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>Receta</title>
   <style>
-    @page {
-      size: A4;
-      margin: 12mm;
-    }
+    @page { size: A4; margin: 12mm; }
 
-    body {
-      font-family: Arial, sans-serif;
-      color: #111;
-      margin: 0;
-    }
+    body { font-family: Arial, sans-serif; color: #111; margin: 0; }
+    .paper { position: relative; }
 
-    .paper {
-      position: relative;
-      min-height: 100%;
-    }
-
-    /* Marca de agua (no tapa contenido) */
+    /* Marca de agua */
     .watermark {
       position: fixed;
       inset: 0;
@@ -203,16 +198,13 @@ export default function PrescriptionDetail() {
       background-repeat: no-repeat;
       background-position: center;
       background-size: 520px auto;
-      opacity: 0.10;          /* bajita para que no estorbe */
+      opacity: 0.12;
       pointer-events: none;
       z-index: 0;
     }
+    .content { position: relative; z-index: 1; }
 
-    .content {
-      position: relative;
-      z-index: 1;
-    }
-
+    /* Header compacto */
     .headerRow {
       display: flex;
       justify-content: space-between;
@@ -220,187 +212,116 @@ export default function PrescriptionDetail() {
       gap: 12px;
       margin-bottom: 8px;
     }
+    .logoTop { height: 68px; object-fit: contain; }
+    .muted { font-size: 11px; color:#333; line-height: 1.25; text-align: right; }
 
-    .logoTop {
-      height: 70px;
-      object-fit: contain;
-      flex: 0 0 auto;
-    }
+    /* Tabla */
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { font-size: 11px; text-align: left; }
+    td { font-size: 11px; white-space: pre-wrap; }
 
-    .muted {
-      font-size: 12px;
-      color: #333;
-      line-height: 1.3;
-      text-align: right;
-    }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
 
-    .title {
-      text-align: center;
-      font-weight: 900;
-      margin: 10px 0 12px;
-      letter-spacing: .5px;
-    }
-
-    /* Tabla multipágina correcta */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      page-break-inside: auto;
-    }
-
-    thead {
-      display: table-header-group; /* repite encabezado por página */
-    }
-
-    tr {
-      page-break-inside: avoid;    /* evita cortar filas */
-      break-inside: avoid;
-    }
-
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
-      vertical-align: top;
-      font-size: 12px;
-      white-space: pre-wrap;
-    }
-
-    th {
-      text-align: left;
-      font-weight: 700;
-    }
-
-    /* Firma: siempre visible, nunca cortada */
+    /* Firma */
     .signature-section {
-      margin-top: 18mm;
+      margin-top: 14mm;
       page-break-inside: avoid;
       break-inside: avoid;
+      text-align: center;
     }
+    .signature-line {
+      width: 300px;
+      margin: 0 auto 10px;
+      border-bottom: 1px solid #000;
+      height: 1px;
+    }
+    .doctor-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+    .doctor-details, .doctor-contact { font-size: 10.5px; color: #333; line-height: 1.25; }
 
-    /* Si queda muy poco espacio en la hoja, manda firma a nueva página */
-    .signature-section.force-new-page {
+    .force-new-page {
       page-break-before: always;
       break-before: page;
-    }
-
-    .signature-line {
-      width: 320px;
-      margin: 0 auto 12px;
-      border-bottom: 1px solid #000;
-      height: 28px;
-    }
-
-    .doctor-name {
-      font-size: 13px;
-      font-weight: bold;
-      text-align: center;
-      margin-bottom: 4px;
-    }
-
-    .doctor-details {
-      font-size: 11px;
-      color: #444;
-      text-align: center;
-      line-height: 1.25;
     }
 
     * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
   </style>
 </head>
-
 <body>
+  <div class="watermark"></div>
+
   <div class="paper">
-    <div class="watermark"></div>
-
     <div class="content">
-      <div class="headerRow">
-        <img class="logoTop" src="${LOGO_TOP}" alt="Logo MicMEDIC" />
-        <div class="muted">
-          <div style="font-weight:900;">${doctor.fullName}</div>
-          <div>${doctor.specialty}</div>
-          <div>CEDULA: ${doctor.cedula}</div>
-          <div>REG. MEDICO: ${doctor.regMedico}</div>
-        </div>
-      </div>
-
       ${html}
 
       <div id="sig" class="signature-section">
         <div class="signature-line"></div>
-        <div class="doctor-name">${doctor.fullName}</div>
+        <div class="doctor-name">ESP. ROMO PROCEL DANIELA JACKELINE</div>
         <div class="doctor-details">
-          ${doctor.specialty}<br/>
-          Cédula: ${doctor.cedula}<br/>
-          Registro Médico: ${doctor.regMedico}<br/>
-          Dirección: ${doctor.address}<br/>
-          Teléfono: ${CLINIC_PHONE} | Email: ${doctor.email}
+          MEDICINA OCUPACIONAL - MEDICINA GENERAL<br/>
+          CÉDULA: 050333534-1<br/>
+          REG. MÉDICO: 0503335341 - 1027 - 2023 - 2599595
+        </div>
+        <div class="doctor-contact">
+          Cotopaxi - Salcedo Barrio La Tebaida (Calle Laguna Quilota y pasaje sin nombre)<br/>
+          Teléfono: 0984340286 &nbsp;|&nbsp; Email: danitas0z@hotmail.com
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // Si queda muy poco espacio al final, empuja la firma a una hoja nueva
-    (function() {
-      const sig = document.getElementById('sig');
-      if (!sig) return;
+    (function () {
+      function run() {
+        const sig = document.getElementById('sig');
+        if (!sig) return;
 
-      const rect = sig.getBoundingClientRect();
-      const pageHeight = window.innerHeight;
+        const rect = sig.getBoundingClientRect();
+        const pageH = window.innerHeight;
+        const SAFE = 160;
 
-      // Si la firma empieza demasiado abajo, la mandamos a nueva página
-      if (rect.top > pageHeight * 0.78) {
-        sig.classList.add('force-new-page');
+        if (rect.bottom > (pageH - SAFE)) {
+          sig.classList.add('force-new-page');
+        }
+
+        setTimeout(() => {
+          window.focus();
+          window.print();
+        }, 250);
       }
+
+      if (document.readyState === 'complete') run();
+      else window.addEventListener('load', run);
     })();
   </script>
 </body>
 </html>
-  `);
-
-  w.document.close();
-
-  // Esperar imágenes antes de imprimir
-  const imgs = w.document.images;
-  const total = imgs.length;
-
-  const doPrint = () => {
-    w.focus();
-    w.print();
-  };
-
-  if (!total) {
-    setTimeout(doPrint, 250);
-    return;
+    `);
+    w.document.close();
   }
-
-  let done = 0;
-  const tick = () => {
-    done++;
-    if (done >= total) setTimeout(doPrint, 250);
-  };
-
-  for (const img of imgs) {
-    if (img.complete) tick();
-    else {
-      img.onload = tick;
-      img.onerror = tick;
-    }
-  }
-}
-
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando receta...</div>;
   if (!visit || !patient) return <div className="mm-empty">No se encontró la consulta.</div>;
 
-  const diag =
-    visit.cie10_code && visit.cie10_name
-      ? `${visit.cie10_name} (${visit.cie10_code})`
-      : visit.cie10_name || visit.cie10_code || "-";
+  // ✅ FORMATEAR MÚLTIPLES DIAGNÓSTICOS
+  const diag = visit.diagnoses && visit.diagnoses.length > 0
+    ? visit.diagnoses
+        .map(d => {
+          if (d.cie10_code && d.cie10_name) {
+            return `${d.cie10_name} (${d.cie10_code})`;
+          }
+          return d.cie10_name || d.cie10_code || "";
+        })
+        .filter(Boolean)
+        .join(", ")
+    : "-";
 
   const rxDateISO = visit.visit_date || new Date().toISOString();
 
@@ -425,7 +346,7 @@ export default function PrescriptionDetail() {
 
         <div className="mm-itemMeta" style={{ padding: 14 }}>
           <div><b>Motivo:</b> {visit.reason || "-"}</div>
-          <div><b>Diagnóstico (CIE10):</b> {diag}</div>
+          <div><b>Diagnóstico(s) CIE10:</b> {diag}</div>
         </div>
       </div>
 
@@ -515,7 +436,7 @@ export default function PrescriptionDetail() {
                 <div><b>Paciente:</b> {patient.name}</div>
                 <div><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {CLINIC_PHONE}</div>
                 <div><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
-                <div><b>Diagnóstico (CIE10):</b> {diag}</div>
+                <div><b>Diagnóstico(s) CIE10:</b> {diag}</div>
               </div>
 
               <table>
