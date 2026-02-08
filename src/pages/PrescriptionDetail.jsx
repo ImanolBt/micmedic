@@ -218,31 +218,38 @@ export default function PrescriptionDetail() {
       z-index: 1; 
     }
 
-    /* ✅ HEADER COMPACTO */
+    /* ✅ HEADER: Logo izquierda, datos doctor derecha */
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1.5px solid #ddd;
+      margin-bottom: 8px;
     }
     
-    .logo-container {
+    .logo-section {
       flex-shrink: 0;
     }
     
     .logoTop { 
       height: 60px; 
       width: auto;
-      object-fit: contain; 
+      object-fit: contain;
+      display: block;
+    }
+
+    .location-info {
+      font-size: 9px;
+      color: #555;
+      margin-top: 4px;
+      line-height: 1.3;
     }
     
-    .header-info {
+    .doctor-header-info {
       text-align: right;
-      font-size: 9.5px;
-      color: #444;
-      line-height: 1.3;
+      font-size: 8.5px;
+      color: #333;
+      line-height: 1.35;
+      font-weight: 600;
     }
 
     /* Título */
@@ -250,32 +257,29 @@ export default function PrescriptionDetail() {
       font-size: 16px; 
       font-weight: 700; 
       text-align: center; 
-      margin: 10px 0 8px;
+      margin: 12px 0 10px;
       color: #2c3e50;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
 
-    /* Info del paciente - MÁS COMPACTA */
+    /* Info del paciente */
     .patient-info { 
-      font-size: 10px; 
-      line-height: 1.4; 
-      margin-bottom: 10px;
-      padding: 8px;
-      background: #f8f9fa;
-      border-radius: 3px;
+      font-size: 11px; 
+      line-height: 1.5; 
+      margin-bottom: 12px;
     }
     
     .patient-info div {
-      margin-bottom: 2px;
+      margin-bottom: 3px;
     }
     
     .patient-info b { 
-      font-weight: 600;
-      color: #2c3e50;
+      font-weight: 700;
+      color: #000;
     }
 
-    /* Tabla de medicamentos - MÁS COMPACTA */
+    /* Tabla de medicamentos */
     table { 
       width: 100%; 
       border-collapse: collapse; 
@@ -305,7 +309,7 @@ export default function PrescriptionDetail() {
     thead { display: table-header-group; }
     tr { page-break-inside: avoid; break-inside: avoid; }
 
-    /* Notas - MÁS COMPACTAS */
+    /* Notas */
     .notes-section {
       margin-top: 10px;
       padding: 7px;
@@ -319,7 +323,7 @@ export default function PrescriptionDetail() {
       color: #e67e22;
     }
 
-    /* ✅ FIRMA CON MÁS ESPACIO PARA FIRMAR A MANO */
+    /* ✅ FIRMA CON ESPACIO PARA FIRMAR A MANO */
     .signature-section {
       margin-top: 25px;
       page-break-inside: avoid;
@@ -331,7 +335,6 @@ export default function PrescriptionDetail() {
       width: 280px;
       margin: 0 auto;
       border-bottom: 1.5px solid #333;
-      /* ✅ ESPACIO AUMENTADO: 50px para que quepa la firma a mano */
       padding-top: 50px;
     }
     
@@ -401,8 +404,6 @@ export default function PrescriptionDetail() {
 
         const rect = sig.getBoundingClientRect();
         const pageH = window.innerHeight;
-        
-        // ✅ Margen ajustado para dar prioridad a que quepa, pero con espacio real para firmar
         const SAFE = 100;
 
         if (rect.bottom > (pageH - SAFE)) {
@@ -543,15 +544,14 @@ export default function PrescriptionDetail() {
 
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
-              {/* ✅ HEADER COMPACTO - LOGO MÁS PEQUEÑO SOLO EN VISTA PREVIA */}
+              {/* ✅ HEADER: Logo + ubicación a la IZQUIERDA | Datos doctor a la DERECHA */}
               <div style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
-                marginBottom: 10,
-                paddingBottom: 8,
-                borderBottom: "1.5px solid #ddd"
+                marginBottom: 8
               }}>
+                {/* IZQUIERDA: Logo + ubicación */}
                 <div style={{ flexShrink: 0 }}>
                   <img 
                     src="/logo-top.png" 
@@ -559,19 +559,34 @@ export default function PrescriptionDetail() {
                     style={{
                       height: "50px",
                       width: "auto",
-                      objectFit: "contain"
+                      objectFit: "contain",
+                      display: "block"
                     }}
                   />
+                  <div style={{
+                    fontSize: "9px",
+                    color: "#555",
+                    marginTop: 4,
+                    lineHeight: 1.3
+                  }}>
+                    {doctor.place}, {fmtDateLong(rxDateISO)}<br/>
+                    Tel: {CLINIC_PHONE}<br/>
+                    {doctor.email}
+                  </div>
                 </div>
+
+                {/* DERECHA: Datos del doctor */}
                 <div style={{
                   textAlign: "right",
-                  fontSize: "9.5px",
-                  color: "#444",
-                  lineHeight: 1.3
+                  fontSize: "8.5px",
+                  color: "#333",
+                  lineHeight: 1.35,
+                  fontWeight: 600
                 }}>
-                  <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
-                  <div>Tel: {CLINIC_PHONE}</div>
-                  <div>{doctor.email}</div>
+                  <div>{doctor.fullName}</div>
+                  <div>{doctor.specialty}</div>
+                  <div>CÉDULA: {doctor.cedula}</div>
+                  <div>REG. MÉDICO: {doctor.regMedico}</div>
                 </div>
               </div>
 
@@ -580,7 +595,7 @@ export default function PrescriptionDetail() {
                 fontSize: 16,
                 fontWeight: 700,
                 textAlign: "center",
-                margin: "10px 0 8px",
+                margin: "12px 0 10px",
                 color: "#2c3e50",
                 textTransform: "uppercase",
                 letterSpacing: "0.3px"
@@ -590,17 +605,14 @@ export default function PrescriptionDetail() {
 
               {/* INFO DEL PACIENTE */}
               <div style={{
-                fontSize: 10,
-                lineHeight: 1.4,
-                marginBottom: 10,
-                padding: 8,
-                background: "#f8f9fa",
-                borderRadius: 3
+                fontSize: 11,
+                lineHeight: 1.5,
+                marginBottom: 12
               }}>
-                <div style={{ marginBottom: 2 }}><b>Paciente:</b> {patient.name}</div>
-                <div style={{ marginBottom: 2 }}><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {patient.phone || CLINIC_PHONE}</div>
-                <div style={{ marginBottom: 2 }}><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
-                <div><b>Diagnóstico(s) CIE10:</b> {diag}</div>
+                <div style={{ marginBottom: 3 }}><b>Paciente:</b> {patient.name}</div>
+                <div style={{ marginBottom: 3 }}><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {patient.phone || CLINIC_PHONE}</div>
+                <div style={{ marginBottom: 3 }}><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
+                <div><b>Diagnóstico (CIE10):</b> {diag}</div>
               </div>
 
               {/* TABLA DE MEDICAMENTOS */}
@@ -618,7 +630,8 @@ export default function PrescriptionDetail() {
                       padding: 7,
                       textAlign: "left",
                       background: "#f1f3f5",
-                      fontWeight: 600
+                      fontWeight: 600,
+                      fontSize: 10
                     }}>
                       Medicamento
                     </th>
@@ -627,7 +640,8 @@ export default function PrescriptionDetail() {
                       padding: 7,
                       textAlign: "left",
                       background: "#f1f3f5",
-                      fontWeight: 600
+                      fontWeight: 600,
+                      fontSize: 10
                     }}>
                       Indicaciones
                     </th>
