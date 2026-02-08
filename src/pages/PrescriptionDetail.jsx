@@ -160,71 +160,165 @@ export default function PrescriptionDetail() {
   }
 
   function printPDF() {
-    const node = printRef.current;
-    if (!node) return;
+  const node = printRef.current;
+  if (!node) return;
 
-    const LOGO_TOP = `${window.location.origin}/logo-top.png`;
-    const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
+  const LOGO_TOP = `${window.location.origin}/logo-top.png`;
+  const LOGO_WM = `${window.location.origin}/logo-watermark.png`;
 
-    const w = window.open("", "_blank", "width=900,height=1200");
-    if (!w) return;
+  const html = node.innerHTML;
 
-    w.document.open();
-    w.document.write(`
+  const w = window.open("", "_blank", "width=900,height=1200");
+  if (!w) return;
+
+  w.document.open();
+  w.document.write(`
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>Receta</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-    .paper { width: 820px; margin: 0 auto; position: relative; }
+    @page {
+      size: A4;
+      margin: 12mm;
+    }
 
+    body {
+      font-family: Arial, sans-serif;
+      color: #111;
+      margin: 0;
+    }
+
+    .paper {
+      position: relative;
+      min-height: 100%;
+    }
+
+    /* Marca de agua (no tapa contenido) */
     .watermark {
-      position: absolute;
+      position: fixed;
       inset: 0;
       background-image: url("${LOGO_WM}");
       background-repeat: no-repeat;
       background-position: center;
-      background-size: 560px auto;
-      opacity: 0.35;
+      background-size: 520px auto;
+      opacity: 0.10;          /* bajita para que no estorbe */
       pointer-events: none;
       z-index: 0;
     }
-    .content { position: relative; z-index: 1; }
 
-    .headerRow{
-      display:flex;
+    .content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .headerRow {
+      display: flex;
       justify-content: space-between;
-      align-items:flex-start;
-      gap:16px;
+      align-items: flex-start;
+      gap: 12px;
       margin-bottom: 8px;
     }
-    .logoTop{ height:70px; object-fit:contain; display:block; }
 
-    .muted { font-size: 12px; color:#333; line-height: 1.3; }
-    .title { text-align:center; font-weight: 900; margin: 12px 0 14px; letter-spacing: .5px; }
-    .info { font-size: 12px; line-height: 1.5; margin-bottom: 12px; }
-    table { width:100%; border-collapse: collapse; }
-    th, td { border: 1px solid #ddd; padding: 10px; vertical-align: top; }
-    th { font-size: 12px; text-align: left; }
-    td { font-size: 12px; white-space: pre-wrap; }
+    .logoTop {
+      height: 70px;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
 
-    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .muted {
+      font-size: 12px;
+      color: #333;
+      line-height: 1.3;
+      text-align: right;
+    }
 
-    @media print {
-      body { padding: 0; }
-      .paper { width: auto; margin: 0; }
+    .title {
+      text-align: center;
+      font-weight: 900;
+      margin: 10px 0 12px;
+      letter-spacing: .5px;
+    }
+
+    /* Tabla multipágina correcta */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      page-break-inside: auto;
+    }
+
+    thead {
+      display: table-header-group; /* repite encabezado por página */
+    }
+
+    tr {
+      page-break-inside: avoid;    /* evita cortar filas */
+      break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      vertical-align: top;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    th {
+      text-align: left;
+      font-weight: 700;
+    }
+
+    /* Firma: siempre visible, nunca cortada */
+    .signature-section {
+      margin-top: 18mm;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* Si queda muy poco espacio en la hoja, manda firma a nueva página */
+    .signature-section.force-new-page {
+      page-break-before: always;
+      break-before: page;
+    }
+
+    .signature-line {
+      width: 320px;
+      margin: 0 auto 12px;
+      border-bottom: 1px solid #000;
+      height: 28px;
+    }
+
+    .doctor-name {
+      font-size: 13px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .doctor-details {
+      font-size: 11px;
+      color: #444;
+      text-align: center;
+      line-height: 1.25;
+    }
+
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
   </style>
 </head>
+
 <body>
   <div class="paper">
     <div class="watermark"></div>
+
     <div class="content">
       <div class="headerRow">
         <img class="logoTop" src="${LOGO_TOP}" alt="Logo MicMEDIC" />
-        <div class="muted" style="text-align:right;">
+        <div class="muted">
           <div style="font-weight:900;">${doctor.fullName}</div>
           <div>${doctor.specialty}</div>
           <div>CEDULA: ${doctor.cedula}</div>
@@ -232,16 +326,72 @@ export default function PrescriptionDetail() {
         </div>
       </div>
 
-      ${node.innerHTML}
+      ${html}
+
+      <div id="sig" class="signature-section">
+        <div class="signature-line"></div>
+        <div class="doctor-name">${doctor.fullName}</div>
+        <div class="doctor-details">
+          ${doctor.specialty}<br/>
+          Cédula: ${doctor.cedula}<br/>
+          Registro Médico: ${doctor.regMedico}<br/>
+          Dirección: ${doctor.address}<br/>
+          Teléfono: ${CLINIC_PHONE} | Email: ${doctor.email}
+        </div>
+      </div>
     </div>
   </div>
+
+  <script>
+    // Si queda muy poco espacio al final, empuja la firma a una hoja nueva
+    (function() {
+      const sig = document.getElementById('sig');
+      if (!sig) return;
+
+      const rect = sig.getBoundingClientRect();
+      const pageHeight = window.innerHeight;
+
+      // Si la firma empieza demasiado abajo, la mandamos a nueva página
+      if (rect.top > pageHeight * 0.78) {
+        sig.classList.add('force-new-page');
+      }
+    })();
+  </script>
 </body>
 </html>
-    `);
-    w.document.close();
+  `);
+
+  w.document.close();
+
+  // Esperar imágenes antes de imprimir
+  const imgs = w.document.images;
+  const total = imgs.length;
+
+  const doPrint = () => {
     w.focus();
     w.print();
+  };
+
+  if (!total) {
+    setTimeout(doPrint, 250);
+    return;
   }
+
+  let done = 0;
+  const tick = () => {
+    done++;
+    if (done >= total) setTimeout(doPrint, 250);
+  };
+
+  for (const img of imgs) {
+    if (img.complete) tick();
+    else {
+      img.onload = tick;
+      img.onerror = tick;
+    }
+  }
+}
+
 
   if (!visitId) return <div className="mm-empty">ID inválido.</div>;
   if (loading) return <div className="mm-empty">Cargando receta...</div>;
