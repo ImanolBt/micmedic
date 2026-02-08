@@ -183,12 +183,22 @@ export default function PrescriptionDetail() {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Receta</title>
+  <title>Receta Médica</title>
   <style>
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 10mm; }
 
-    body { font-family: Arial, sans-serif; color: #111; margin: 0; }
-    .paper { position: relative; }
+    body { 
+      font-family: Arial, sans-serif; 
+      color: #111; 
+      margin: 0; 
+      padding: 0;
+    }
+    
+    .paper { 
+      position: relative;
+      max-width: 210mm;
+      margin: 0 auto;
+    }
 
     /* Marca de agua */
     .watermark {
@@ -197,55 +207,161 @@ export default function PrescriptionDetail() {
       background-image: url("${LOGO_WM}");
       background-repeat: no-repeat;
       background-position: center;
-      background-size: 520px auto;
-      opacity: 0.12;
+      background-size: 500px auto;
+      opacity: 0.10;
       pointer-events: none;
       z-index: 0;
     }
-    .content { position: relative; z-index: 1; }
+    
+    .content { 
+      position: relative; 
+      z-index: 1; 
+    }
 
-    /* Header compacto */
-    .headerRow {
+    /* ✅ HEADER COMPACTO */
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1.5px solid #ddd;
     }
-    .logoTop { height: 68px; object-fit: contain; }
-    .muted { font-size: 11px; color:#333; line-height: 1.25; text-align: right; }
+    
+    .logo-container {
+      flex-shrink: 0;
+    }
+    
+    .logoTop { 
+      height: 60px; 
+      width: auto;
+      object-fit: contain; 
+    }
+    
+    .header-info {
+      text-align: right;
+      font-size: 9.5px;
+      color: #444;
+      line-height: 1.3;
+    }
 
-    /* Tabla */
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { font-size: 11px; text-align: left; }
-    td { font-size: 11px; white-space: pre-wrap; }
+    /* Título */
+    .title { 
+      font-size: 16px; 
+      font-weight: 700; 
+      text-align: center; 
+      margin: 10px 0 8px;
+      color: #2c3e50;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    /* Info del paciente - MÁS COMPACTA */
+    .patient-info { 
+      font-size: 10px; 
+      line-height: 1.4; 
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 3px;
+    }
+    
+    .patient-info div {
+      margin-bottom: 2px;
+    }
+    
+    .patient-info b { 
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    /* Tabla de medicamentos - MÁS COMPACTA */
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin: 8px 0;
+    }
+    
+    th, td { 
+      border: 1px solid #ddd; 
+      padding: 7px; 
+      vertical-align: top;
+      text-align: left;
+    }
+    
+    th { 
+      font-size: 10px;
+      font-weight: 600;
+      background: #f1f3f5;
+      color: #2c3e50;
+    }
+    
+    td { 
+      font-size: 9.5px; 
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
 
     thead { display: table-header-group; }
-    tfoot { display: table-footer-group; }
     tr { page-break-inside: avoid; break-inside: avoid; }
 
-    /* Firma */
+    /* Notas - MÁS COMPACTAS */
+    .notes-section {
+      margin-top: 10px;
+      padding: 7px;
+      background: #fffbf0;
+      border-left: 2px solid #f39c12;
+      font-size: 9.5px;
+      line-height: 1.4;
+    }
+    
+    .notes-section b {
+      color: #e67e22;
+    }
+
+    /* ✅ FIRMA CON MÁS ESPACIO PARA FIRMAR A MANO */
     .signature-section {
-      margin-top: 14mm;
+      margin-top: 25px;
       page-break-inside: avoid;
       break-inside: avoid;
       text-align: center;
     }
+    
     .signature-line {
-      width: 300px;
-      margin: 0 auto 10px;
-      border-bottom: 1px solid #000;
-      height: 1px;
+      width: 280px;
+      margin: 0 auto;
+      border-bottom: 1.5px solid #333;
+      /* ✅ ESPACIO AUMENTADO: 50px para que quepa la firma a mano */
+      padding-top: 50px;
     }
-    .doctor-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
-    .doctor-details, .doctor-contact { font-size: 10.5px; color: #333; line-height: 1.25; }
+    
+    .doctor-name { 
+      font-size: 11px; 
+      font-weight: 700; 
+      margin-top: 8px;
+      margin-bottom: 3px;
+      color: #2c3e50;
+    }
+    
+    .doctor-details { 
+      font-size: 9px; 
+      color: #555; 
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    
+    .doctor-contact { 
+      font-size: 8.5px; 
+      color: #777; 
+      line-height: 1.2;
+    }
 
     .force-new-page {
       page-break-before: always;
       break-before: page;
     }
 
+    /* Imprimir fondos */
     * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
@@ -260,6 +376,7 @@ export default function PrescriptionDetail() {
     <div class="content">
       ${html}
 
+      <!-- ✅ Firma al final CON ESPACIO PARA FIRMAR -->
       <div id="sig" class="signature-section">
         <div class="signature-line"></div>
         <div class="doctor-name">ESP. ROMO PROCEL DANIELA JACKELINE</div>
@@ -270,7 +387,7 @@ export default function PrescriptionDetail() {
         </div>
         <div class="doctor-contact">
           Cotopaxi - Salcedo Barrio La Tebaida (Calle Laguna Quilota y pasaje sin nombre)<br/>
-          Teléfono: 0984340286 &nbsp;|&nbsp; Email: danitas0z@hotmail.com
+          Teléfono: 0984340286 | Email: danitas0z@hotmail.com
         </div>
       </div>
     </div>
@@ -284,7 +401,9 @@ export default function PrescriptionDetail() {
 
         const rect = sig.getBoundingClientRect();
         const pageH = window.innerHeight;
-        const SAFE = 160;
+        
+        // ✅ Margen ajustado para dar prioridad a que quepa, pero con espacio real para firmar
+        const SAFE = 100;
 
         if (rect.bottom > (pageH - SAFE)) {
           sig.classList.add('force-new-page');
@@ -424,26 +543,94 @@ export default function PrescriptionDetail() {
 
           <div style={{ padding: 14 }}>
             <div ref={printRef}>
-              <div className="muted" style={{ textAlign: "right" }}>
-                <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
-                <div>Tel: {CLINIC_PHONE}</div>
-                <div>{doctor.email}</div>
+              {/* ✅ HEADER COMPACTO - LOGO MÁS PEQUEÑO SOLO EN VISTA PREVIA */}
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: 10,
+                paddingBottom: 8,
+                borderBottom: "1.5px solid #ddd"
+              }}>
+                <div style={{ flexShrink: 0 }}>
+                  <img 
+                    src="/logo-top.png" 
+                    alt="MicMEDIC"
+                    style={{
+                      height: "50px",
+                      width: "auto",
+                      objectFit: "contain"
+                    }}
+                  />
+                </div>
+                <div style={{
+                  textAlign: "right",
+                  fontSize: "9.5px",
+                  color: "#444",
+                  lineHeight: 1.3
+                }}>
+                  <div>{doctor.place}, {fmtDateLong(rxDateISO)}</div>
+                  <div>Tel: {CLINIC_PHONE}</div>
+                  <div>{doctor.email}</div>
+                </div>
               </div>
 
-              <div className="title">RECETA MÉDICA</div>
+              {/* TÍTULO */}
+              <div style={{
+                fontSize: 16,
+                fontWeight: 700,
+                textAlign: "center",
+                margin: "10px 0 8px",
+                color: "#2c3e50",
+                textTransform: "uppercase",
+                letterSpacing: "0.3px"
+              }}>
+                RECETA MÉDICA
+              </div>
 
-              <div className="info">
-                <div><b>Paciente:</b> {patient.name}</div>
-                <div><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {CLINIC_PHONE}</div>
-                <div><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
+              {/* INFO DEL PACIENTE */}
+              <div style={{
+                fontSize: 10,
+                lineHeight: 1.4,
+                marginBottom: 10,
+                padding: 8,
+                background: "#f8f9fa",
+                borderRadius: 3
+              }}>
+                <div style={{ marginBottom: 2 }}><b>Paciente:</b> {patient.name}</div>
+                <div style={{ marginBottom: 2 }}><b>CI:</b> {patient.cedula || "-"} &nbsp;&nbsp; <b>Tel:</b> {patient.phone || CLINIC_PHONE}</div>
+                <div style={{ marginBottom: 2 }}><b>Fecha de atención:</b> {fmtDateShort(rxDateISO)}</div>
                 <div><b>Diagnóstico(s) CIE10:</b> {diag}</div>
               </div>
 
-              <table>
+              {/* TABLA DE MEDICAMENTOS */}
+              <table style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                margin: "8px 0",
+                fontSize: 10
+              }}>
                 <thead>
                   <tr>
-                    <th style={{ width: "40%" }}>Medicamento</th>
-                    <th>Indicaciones</th>
+                    <th style={{
+                      width: "40%",
+                      border: "1px solid #ddd",
+                      padding: 7,
+                      textAlign: "left",
+                      background: "#f1f3f5",
+                      fontWeight: 600
+                    }}>
+                      Medicamento
+                    </th>
+                    <th style={{
+                      border: "1px solid #ddd",
+                      padding: 7,
+                      textAlign: "left",
+                      background: "#f1f3f5",
+                      fontWeight: 600
+                    }}>
+                      Indicaciones
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -451,14 +638,40 @@ export default function PrescriptionDetail() {
                     .filter((x) => (x.med || "").trim() && (x.instructions || "").trim())
                     .map((x, idx) => (
                       <tr key={x.id ?? idx}>
-                        <td>{x.med}</td>
-                        <td>{x.instructions}</td>
+                        <td style={{
+                          border: "1px solid #ddd",
+                          padding: 7,
+                          verticalAlign: "top",
+                          fontSize: "9.5px",
+                          lineHeight: 1.4
+                        }}>
+                          {x.med}
+                        </td>
+                        <td style={{
+                          border: "1px solid #ddd",
+                          padding: 7,
+                          verticalAlign: "top",
+                          fontSize: "9.5px",
+                          lineHeight: 1.4,
+                          whiteSpace: "pre-wrap"
+                        }}>
+                          {x.instructions}
+                        </td>
                       </tr>
                     ))}
 
                   {items.filter((x) => (x.med || "").trim() && (x.instructions || "").trim()).length === 0 && (
                     <tr>
-                      <td colSpan={2} style={{ textAlign: "center", opacity: 0.7 }}>
+                      <td 
+                        colSpan={2} 
+                        style={{
+                          border: "1px solid #ddd",
+                          padding: 7,
+                          textAlign: "center",
+                          opacity: 0.7,
+                          fontSize: "9.5px"
+                        }}
+                      >
                         Aún no hay medicamentos válidos.
                       </td>
                     </tr>
@@ -466,13 +679,19 @@ export default function PrescriptionDetail() {
                 </tbody>
               </table>
 
+              {/* NOTAS ADICIONALES */}
               {rxNotes?.trim() ? (
-                <div className="footer" style={{ marginTop: 12, fontSize: 12 }}>
-                  <b>Notas:</b> {rxNotes}
+                <div style={{
+                  marginTop: 10,
+                  padding: 7,
+                  background: "#fffbf0",
+                  borderLeft: "2px solid #f39c12",
+                  fontSize: "9.5px",
+                  lineHeight: 1.4
+                }}>
+                  <b style={{ color: "#e67e22" }}>Notas:</b> {rxNotes}
                 </div>
               ) : null}
-
-              <div style={{ marginTop: "60px" }} />
             </div>
           </div>
         </div>
