@@ -164,7 +164,7 @@ function numToWordsEs(n) {
     1:"UNO",2:"DOS",3:"TRES",4:"CUATRO",5:"CINCO",6:"SEIS",7:"SIETE",8:"OCHO",9:"NUEVE",
     10:"DIEZ",11:"ONCE",12:"DOCE",13:"TRECE",14:"CATORCE",15:"QUINCE",
     16:"DIECISEIS",17:"DIECISIETE",18:"DIECIOCHO",19:"DIECINUEVE",
-    20:"VEINTE",21:"VEINTIUNO",22:"VEINTIDOS",23:"VEINTITRES",24:"VEINTICUATRO",
+    20:"VEINTE",21:"VEINTIUNO",22:"VEINTIDOS",23:"VEINTITRES",24:"VEINTIFICUATRO",
     25:"VEINTICINCO",26:"VEINTISEIS",27:"VEINTISIETE",28:"VEINTIOCHO",29:"VEINTINUEVE"
   };
 
@@ -252,8 +252,6 @@ export default function VisitDetail() {
 
   const [visitDateEdit, setVisitDateEdit] = useState("");
   const [reasonEdit, setReasonEdit] = useState("");
-  const [cie10CodeEdit, setCie10CodeEdit] = useState("");
-  const [cie10NameEdit, setCie10NameEdit] = useState("");
   const [visitNotesEdit, setVisitNotesEdit] = useState("");
 
   const [bpSys, setBpSys] = useState("");
@@ -317,156 +315,169 @@ export default function VisitDetail() {
     ).join("; ");
   }
 
-  async function loadAll() {
-    if (!visitId) return;
-    setLoading(true);
+ async function loadAll() {
+  if (!visitId) return;
+  setLoading(true);
 
-    try {
-      const v = await supabase
-        .from("medical_visits")
-        .select(
-          "id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, user_id, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
-        )
-        .eq("id", visitId)
-        .single();
+  try {
+    console.log("🔵 1. Cargando visita...");
+    const v = await supabase
+      .from("medical_visits")
+      .select(
+        "id, patient_id, visit_date, reason, cie10_code, cie10_name, notes, created_at, user_id, bp_sys, bp_dia, hr, spo2, temp_c, weight_kg, height_cm, bmi, pediatric_percentile"
+      )
+      .eq("id", visitId)
+      .single();
 
-      if (v.error) throw new Error(`Error cargando consulta: ${v.error.message}`);
+    if (v.error) throw new Error(`Error cargando consulta: ${v.error.message}`);
+    console.log("✅ Visita cargada:", v.data);
 
-      const p = await supabase
-        .from("patients")
-        .select("*")
-        .eq("id", v.data.patient_id)
-        .single();
+    console.log("🔵 2. Cargando paciente...");
+    const p = await supabase
+      .from("patients")
+      .select("*")
+      .eq("id", v.data.patient_id)
+      .single();
 
-      if (p.error) throw new Error(`Error cargando paciente: ${p.error.message}`);
+    if (p.error) throw new Error(`Error cargando paciente: ${p.error.message}`);
+    console.log("✅ Paciente cargado:", p.data);
 
-      setVisit(v.data);
-      setPatient(p.data);
+    setVisit(v.data);
+    setPatient(p.data);
 
-      setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
-      setReasonEdit(v.data.reason ?? "");
-      setCie10CodeEdit(v.data.cie10_code ?? "");
-      setCie10NameEdit(v.data.cie10_name ?? "");
-      setVisitNotesEdit(v.data.notes ?? "");
+    console.log("🔵 3. Seteando estados de edición...");
+    setVisitDateEdit(toLocalDatetimeValue(v.data.visit_date));
+    setReasonEdit(v.data.reason ?? "");
+    setVisitNotesEdit(v.data.notes ?? "");
+    console.log("✅ Estados seteados - notes:", v.data.notes);
 
-      setBpSys(v.data.bp_sys ?? "");
-      setBpDia(v.data.bp_dia ?? "");
-      setHr(v.data.hr ?? "");
-      setSpo2(v.data.spo2 ?? "");
-      setTempC(v.data.temp_c ?? "");
-      setWeightKg(v.data.weight_kg ?? "");
-      setHeightCm(v.data.height_cm ?? "");
-      setPediatricPercentile(v.data.pediatric_percentile ?? "");
+    setBpSys(v.data.bp_sys ?? "");
+    setBpDia(v.data.bp_dia ?? "");
+    setHr(v.data.hr ?? "");
+    setSpo2(v.data.spo2 ?? "");
+    setTempC(v.data.temp_c ?? "");
+    setWeightKg(v.data.weight_kg ?? "");
+    setHeightCm(v.data.height_cm ?? "");
+    setPediatricPercentile(v.data.pediatric_percentile ?? "");
 
-      const d = await supabase
-        .from("medical_visit_diagnoses")
-        .select("cie10_code, cie10_name")
-        .eq("visit_id", visitId)
-        .order("id", { ascending: true });
+    console.log("🔵 4. Cargando diagnósticos...");
+    const d = await supabase
+      .from("medical_visit_diagnoses")
+      .select("cie10_code, cie10_name")
+      .eq("visit_id", visitId)
+      .order("id", { ascending: true });
 
-      if (d.error) {
-        console.error("Error cargando diagnósticos:", d.error);
-        setDiags([]);
-      } else {
-        setDiags((d.data || []).map((x) => ({ code: x.cie10_code, name: x.cie10_name })));
-      }
-
-      const c = await supabase
-        .from("certificates")
-        .select("id, date, days_rest, rest_from, rest_to, entity, position, address, email, contact_phone, include_notes, notes, title, body, visit_id, patient_id, created_at, created_by")
-        .eq("visit_id", visitId)
-        .maybeSingle();
-
-      if (c.error && c.error.code !== 'PGRST116') {
-        console.error("Error cargando certificado:", c.error);
-      } else if (c.data) {
-        setCertId(c.data.id);
-        setCertDate(c.data.date || new Date().toISOString());
-        setRestFrom(c.data.rest_from ? String(c.data.rest_from) : "");
-        setRestTo(c.data.rest_to ? String(c.data.rest_to) : "");
-        setEntity(c.data.entity ?? "");
-        setPosition(c.data.position ?? "");
-        setAddress(c.data.address ?? "");
-        setEmail(c.data.email ?? "");
-        setContactPhone(c.data.contact_phone ?? "");
-        setIncludeNotes(!!c.data.include_notes);
-        setNotes(c.data.notes ?? "");
-      } else {
-        setCertId(null);
-        setCertDate(v.data.visit_date || new Date().toISOString());
-        const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
-        setRestFrom(visitDay);
-        setRestTo("");
-        setEntity("");
-        setPosition("");
-        setAddress("");
-        setEmail("");
-        setContactPhone("");
-        setIncludeNotes(false);
-        setNotes("");
-      }
-
-    } catch (error) {
-      console.error("Error en loadAll:", error);
-      alert(error.message || "Error al cargar los datos");
-    } finally {
-      setLoading(false);
+    if (d.error) {
+      console.error("⚠️ Error cargando diagnósticos:", d.error);
+      setDiags([]);
+    } else {
+      console.log("✅ Diagnósticos cargados:", d.data);
+      setDiags((d.data || []).map((x) => ({ code: x.cie10_code, name: x.cie10_name })));
     }
+
+    console.log("🔵 5. Cargando certificado...");
+    const c = await supabase
+      .from("certificates")
+      .select("*")
+      .eq("visit_id", visitId)
+      .maybeSingle();
+
+    if (c.error && c.error.code !== 'PGRST116') {
+      console.error("⚠️ Error cargando certificado:", c.error);
+    } else if (c.data) {
+      console.log("✅ Certificado cargado:", c.data);
+      setCertId(c.data.id);
+      setCertDate(c.data.date || new Date().toISOString());
+      setRestFrom(c.data.rest_from ? String(c.data.rest_from) : "");
+      setRestTo(c.data.rest_to ? String(c.data.rest_to) : "");
+      setEntity(c.data.entity ?? "");
+      setPosition(c.data.position ?? "");
+      setAddress(c.data.address ?? "");
+      setEmail(c.data.email ?? "");
+      setContactPhone(c.data.contact_phone ?? "");
+      setIncludeNotes(!!c.data.include_notes);
+      setNotes(c.data.notes ?? "");
+    } else {
+      console.log("ℹ️ No hay certificado previo");
+      setCertId(null);
+      setCertDate(v.data.visit_date || new Date().toISOString());
+      const visitDay = v.data.visit_date ? new Date(v.data.visit_date).toISOString().slice(0, 10) : "";
+      setRestFrom(visitDay);
+      setRestTo("");
+      setEntity("");
+      setPosition("");
+      setAddress("");
+      setEmail("");
+      setContactPhone("");
+      setIncludeNotes(false);
+      setNotes("");
+    }
+
+    console.log("✅ loadAll() completado exitosamente");
+
+  } catch (error) {
+    console.error("❌ Error en loadAll:", error);
+    alert(error.message || "Error al cargar los datos");
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visitId]);
 
-  async function saveVisitEdits() {
-    if (!visit) return;
-    if (savingVisit) return;
+ async function saveVisitEdits() {
+  if (!visit) return;
+  if (savingVisit) return;
 
-    const nextVisitISO = fromLocalDatetimeValue(visitDateEdit);
-    if (!nextVisitISO) {
-      alert("Fecha de consulta inválida.");
-      return;
-    }
-    if (!reasonEdit.trim()) {
-      alert("El motivo no puede quedar vacío.");
-      return;
-    }
-
-    const payload = {
-      visit_date: nextVisitISO,
-      reason: reasonEdit.trim(),
-      cie10_code: cie10CodeEdit.trim() || null,
-      cie10_name: cie10NameEdit.trim() || null,
-      notes: visitNotesEdit.trim() || null,
-    };
-
-    setSavingVisit(true);
-    try {
-      const { error } = await supabase
-        .from("medical_visits")
-        .update(payload)
-        .eq("id", visit.id);
-
-      if (error) throw error;
-
-      alert("Consulta actualizada.");
-      setEditVisit(false);
-      loadAll();
-    } catch (error) {
-      console.error(error);
-      alert(error.message || "No se pudo guardar cambios de la consulta");
-    } finally {
-      setSavingVisit(false);
-    }
+  const nextVisitISO = fromLocalDatetimeValue(visitDateEdit);
+  if (!nextVisitISO) {
+    alert("Fecha de consulta inválida.");
+    return;
   }
+  if (!reasonEdit.trim()) {
+    alert("El motivo no puede quedar vacío.");
+    return;
+  }
+
+  const payload = {
+    visit_date: nextVisitISO,
+    reason: reasonEdit.trim(),
+    notes: visitNotesEdit.trim() || null,
+  };
+
+  // ✅ DEBUG: Ver qué se está enviando
+  console.log("🔍 Guardando consulta con payload:", payload);
+  console.log("🔍 Visit ID:", visit.id);
+
+  setSavingVisit(true);
+  try {
+    const { data, error } = await supabase
+      .from("medical_visits")
+      .update(payload)
+      .eq("id", visit.id)
+      .select(); // ✅ AGREGADO: para ver qué devuelve
+
+    if (error) throw error;
+
+    console.log("✅ Respuesta de Supabase:", data);
+    alert("Consulta actualizada.");
+    setEditVisit(false);
+    loadAll();
+  } catch (error) {
+    console.error("❌ Error guardando:", error);
+    alert(error.message || "No se pudo guardar cambios de la consulta");
+  } finally {
+    setSavingVisit(false);
+  }
+}
 
   function cancelVisitEdits() {
     if (!visit) return;
     setVisitDateEdit(toLocalDatetimeValue(visit.visit_date));
     setReasonEdit(visit.reason ?? "");
-    setCie10CodeEdit(visit.cie10_code ?? "");
-    setCie10NameEdit(visit.cie10_name ?? "");
     setVisitNotesEdit(visit.notes ?? "");
     setEditVisit(false);
   }
@@ -601,7 +612,6 @@ export default function VisitDetail() {
       `Correo electrónico: ${email || "-"}`,
       `Teléfono de contacto: ${contactPhone || "-"}`,
       "",
-      // ✅ NOTAS ADICIONALES
       ...(includeNotes && notes?.trim() ? [
         "NOTAS ADICIONALES:",
         notes.trim(),
@@ -772,7 +782,6 @@ export default function VisitDetail() {
     `);
     w.document.close();
 
-    // ✅ Esperar a que las imágenes carguen
     const images = w.document.querySelectorAll('img');
     let loadedCount = 0;
     const totalImages = images.length;
@@ -888,27 +897,6 @@ export default function VisitDetail() {
                     onChange={(e) => setReasonEdit(e.target.value)}
                     disabled={savingVisit}
                   />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>Diagnóstico CIE10 (código y nombre)</div>
-                <input
-                  className="mm-input"
-                  value={cie10CodeEdit}
-                  onChange={(e) => setCie10CodeEdit(e.target.value)}
-                  disabled={savingVisit}
-                  placeholder="Ej: J02.9"
-                />
-                <input
-                  className="mm-input"
-                  value={cie10NameEdit}
-                  onChange={(e) => setCie10NameEdit(e.target.value)}
-                  disabled={savingVisit}
-                  placeholder="Ej: Faringitis aguda, no especificada"
-                />
-                <div className="mm-hint" style={{ margin: 0 }}>
-                  Nota: Para diagnósticos múltiples usa la sección "Diagnósticos (CIE10)" más abajo
                 </div>
               </div>
 
