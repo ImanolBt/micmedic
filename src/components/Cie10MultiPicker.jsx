@@ -77,6 +77,10 @@ export default function Cie10MultiPicker({ selected = [], onChange }) {
     }
 
     // deja el modal abierto para agregar varios rápido
+        // deja el modal abierto para agregar varios rápido
+
+            // deja el modal abierto para agregar varios rápido
+
     setQ("");
     setRows([]);
     setTimeout(() => inputRef.current?.focus(), 50);
