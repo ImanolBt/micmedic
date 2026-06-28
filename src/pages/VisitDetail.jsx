@@ -21,8 +21,10 @@ function fmtDateLong(dateISO) {
     "julio","agosto","septiembre","octubre","noviembre","diciembre"
   ];
 
-  const [year, month, day] = dateISO.split("-");
+  const clean = typeof dateISO === "string" ? dateISO.slice(0, 10) : "";
+  if (!clean.match(/^\d{4}-\d{2}-\d{2}$/)) return "-";
 
+  const [year, month, day] = clean.split("-");
   return `${parseInt(day)} de ${meses[parseInt(month) - 1]} de ${year}`;
 }
 
@@ -695,7 +697,14 @@ export default function VisitDetail() {
       margin: 0 auto; 
       position: relative; 
     }
-
+      @media print {
+  @page {
+    margin: 0;
+  }
+  body {
+    padding: 8mm;
+  }
+}
     .watermark {
       position: absolute;
       inset: 0;
@@ -1201,7 +1210,7 @@ Contingencia: ${contingency}
 
 Tipo de atencion: ${attentionType}
 
-Fecha de atencion: ${fmtDateShort(visit.visit_date)}
+Fecha de atencion: ${fmtDateShortDMY(certDate.slice(0, 10))}
 
 Tratamiento: ${treatment}
 
