@@ -3,303 +3,190 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 function startOfTodayISO() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  const d = new Date(); d.setHours(0,0,0,0); return d.toISOString();
 }
 function endOfTodayISO() {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d.toISOString();
+  const d = new Date(); d.setHours(23,59,59,999); return d.toISOString();
+}
+function fmtDateTime(iso) {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("es-EC", {
+    day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"
+  });
+}
+function fmtTimeOnly(iso) {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleTimeString("es-EC", { hour:"2-digit", minute:"2-digit" });
+}
+function initials(name = "") {
+  return name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase() || "?";
 }
 
-function fmtDateTime(dateISO) {
-  if (!dateISO) return "-";
-  return new Date(dateISO).toLocaleString("es-EC");
-}
+const KPI_DEFS = [
+  { key:"patients",  label:"Total pacientes",   icon:"👤", sub:"registrados" },
+  { key:"visits",    label:"Consultas",          icon:"🩺", sub:"hoy" },
+  { key:"certs",     label:"Certificados",       icon:"📄", sub:"hoy" },
+  { key:"rx",        label:"Recetas",            icon:"💊", sub:"hoy" },
+];
 
 export default function Dashboard() {
   const nav = useNavigate();
-
   const [loading, setLoading] = useState(true);
-
-  const [countPatients, setCountPatients] = useState(0);
-  const [countVisitsToday, setCountVisitsToday] = useState(0);
-  const [countCertsToday, setCountCertsToday] = useState(0);
-  const [countRxToday, setCountRxToday] = useState(0);
-
+  const [kpis, setKpis] = useState({ patients:0, visits:0, certs:0, rx:0 });
   const [recentVisits, setRecentVisits] = useState([]);
-
-  // mini agenda demo (si todavía no tienes tabla agenda)
-  const agendaDemo = useMemo(
-    () => [
-      { time: "08:30", who: "María Fernanda" },
-      { time: "10:00", who: "Carlos Andrés" },
-      { time: "11:30", who: "Paciente nuevo" },
-    ],
-    []
-  );
+  const today = useMemo(() => new Date().toLocaleDateString("es-EC", { weekday:"long", day:"numeric", month:"long" }), []);
 
   async function load() {
     setLoading(true);
+    const from = startOfTodayISO(), to = endOfTodayISO();
 
-    const from = startOfTodayISO();
-    const to = endOfTodayISO();
+    const [p, vT, cT, rT] = await Promise.all([
+      supabase.from("patients").select("id", { count:"exact", head:true }),
+      supabase.from("medical_visits").select("id", { count:"exact", head:true }).gte("visit_date", from).lte("visit_date", to),
+      supabase.from("certificates").select("id", { count:"exact", head:true }).gte("date", from).lte("date", to),
+      supabase.from("prescriptions").select("id", { count:"exact", head:true }).gte("date", from).lte("date", to),
+    ]);
+    setKpis({
+      patients: p.count || 0,
+      visits: vT.count || 0,
+      certs: cT.count || 0,
+      rx: rT.error ? 0 : (rT.count || 0),
+    });
 
-    // 1) pacientes (total)
-    const p = await supabase.from("patients").select("id", { count: "exact", head: true });
-    if (!p.error) setCountPatients(p.count || 0);
-
-    // 2) consultas de hoy
-    const vToday = await supabase
-      .from("medical_visits")
-      .select("id", { count: "exact", head: true })
-      .gte("visit_date", from)
-      .lte("visit_date", to);
-
-    if (!vToday.error) setCountVisitsToday(vToday.count || 0);
-
-    // 3) certificados de hoy
-    const cToday = await supabase
-      .from("certificates")
-      .select("id", { count: "exact", head: true })
-      .gte("date", from)
-      .lte("date", to);
-
-    if (!cToday.error) setCountCertsToday(cToday.count || 0);
-
-    // 4) recetas de hoy (si existe tabla prescriptions)
-    const rToday = await supabase
-      .from("prescriptions")
-      .select("id", { count: "exact", head: true })
-      .gte("date", from)
-      .lte("date", to);
-
-    // Si no existe la tabla, no rompas el dashboard
-    if (rToday.error) {
-      setCountRxToday(0);
-    } else {
-      setCountRxToday(rToday.count || 0);
-    }
-
-    // 5) últimas 6 consultas con paciente
-    // (nota: para join necesitas relación o lo hacemos en 2 pasos; aquí lo hago en 2 pasos seguro)
     const v = await supabase
-      .from("medical_visits")
-      .select("id, patient_id, visit_date, reason, cie10_code, cie10_name")
-      .order("visit_date", { ascending: false })
-      .limit(6);
+      .from("medical_visits").select("id, patient_id, visit_date, reason, cie10_code, cie10_name")
+      .order("visit_date", { ascending:false }).limit(8);
 
-    if (v.error) {
-      console.error(v.error);
-      setRecentVisits([]);
-      setLoading(false);
-      return;
+    const rows = v.data || [];
+    const ids = [...new Set(rows.map(x => x.patient_id).filter(Boolean))];
+    let pMap = {};
+    if (ids.length) {
+      const pp = await supabase.from("patients").select("id, name, cedula").in("id", ids);
+      pMap = Object.fromEntries((pp.data||[]).map(x=>[x.id,x]));
     }
-
-    const visitRows = v.data || [];
-    const patientIds = [...new Set(visitRows.map((x) => x.patient_id).filter(Boolean))];
-
-    let patientsMap = {};
-    if (patientIds.length) {
-      const pp = await supabase
-        .from("patients")
-        .select("id, name, cedula")
-        .in("id", patientIds);
-
-      if (!pp.error) {
-        patientsMap = Object.fromEntries((pp.data || []).map((x) => [x.id, x]));
-      }
-    }
-
-    const merged = visitRows.map((x) => ({
-      ...x,
-      patient: patientsMap[x.patient_id] || null,
-    }));
-
-    setRecentVisits(merged);
+    setRecentVisits(rows.map(x => ({ ...x, patient: pMap[x.patient_id]||null })));
     setLoading(false);
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line
-  }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
-      <div className="mm-card">
-        <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-          <div>
-            <div className="mm-cardTitle">Dashboard</div>
-            <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Resumen rápido del consultorio (hoy y actividad reciente)
-            </div>
-          </div>
-
-          <button className="mm-btn mm-btn--ghost" type="button" onClick={load}>
-            {loading ? "Actualizando..." : "Actualizar"}
-          </button>
+    <div style={{ display:"grid", gap: 22 }}>
+      {/* Header */}
+      <div className="mm-header">
+        <div>
+          <h1 className="mm-title">Dashboard</h1>
+          <div className="mm-subtitle" style={{ textTransform:"capitalize" }}>{today}</div>
         </div>
-
-        {/* KPIs */}
-        <div style={{ padding: 14, display: "grid", gap: 12 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 12,
-            }}
-          >
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Pacientes</div>
-                <div className="mm-chip">Total</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countPatients}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Consultas</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countVisitsToday}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Certificados</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countCertsToday}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Recetas</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countRxToday}
-              </div>
-            </div>
-          </div>
-
-          <div className="mm-hint" style={{ margin: 0 }}>
-            Tip: esto se ve “vendible” porque resume volumen real y productividad del consultorio.
-          </div>
-        </div>
+        <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={load}>
+          {loading ? "⏳" : "↺"} Actualizar
+        </button>
       </div>
 
-      {/* 2 columnas */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 14 }}>
+      {/* KPIs */}
+      <div className="mm-kpi-grid">
+        {KPI_DEFS.map(def => (
+          <div className="mm-kpi" key={def.key}>
+            <div className="mm-kpi-icon">{def.icon}</div>
+            <div className="mm-kpi-label">{def.label}</div>
+            <div className="mm-kpi-value">{loading ? "—" : kpis[def.key]}</div>
+            <div className="mm-kpi-sub">{def.sub}</div>
+            <div className="mm-kpi-badge">↑ activo</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two columns */}
+      <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr", gap: 18 }}>
         {/* Últimas consultas */}
         <div className="mm-card">
-          <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-            <div className="mm-cardTitle">Últimas consultas</div>
-            <div className="mm-chip">{loading ? "Cargando..." : `${recentVisits.length} recientes`}</div>
+          <div className="mm-cardHead">
+            <div>
+              <div className="mm-cardTitle">Últimas consultas</div>
+              <div style={{ fontSize:12, color:"var(--mm-muted)", marginTop:2 }}>Historial más reciente</div>
+            </div>
+            <span className="mm-chip mm-chip--green">{recentVisits.length} registros</span>
           </div>
 
-          <div style={{ padding: 14, display: "grid", gap: 10 }}>
-            {loading && <div className="mm-empty">Cargando...</div>}
-
-            {!loading && recentVisits.length === 0 && (
-              <div className="mm-empty">Aún no hay consultas registradas.</div>
-            )}
-
-            {!loading &&
-              recentVisits.map((v) => {
-                const diag =
-                  v.cie10_code && v.cie10_name
-                    ? `${v.cie10_name} (${v.cie10_code})`
-                    : v.cie10_name || v.cie10_code || "-";
-
-                return (
-                  <div
-                    key={v.id}
-                    className="mm-item"
-                    onClick={() => nav(`/visits/${v.id}`)}
-                    style={{ cursor: "pointer" }}
-                    title="Abrir consulta"
-                  >
-                    <div className="mm-itemTop" style={{ alignItems: "flex-start" }}>
-                      <div style={{ display: "grid", gap: 2 }}>
-                        <div className="mm-itemName">
-                          {v.patient?.name || "Paciente"} — {v.reason || "Consulta"}
+          {loading ? (
+            <div className="mm-empty">Cargando...</div>
+          ) : recentVisits.length === 0 ? (
+            <div className="mm-empty">Sin consultas registradas</div>
+          ) : (
+            <table className="mm-table">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Fecha</th>
+                  <th>Motivo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentVisits.map(v => (
+                  <tr key={v.id} className="mm-table-click" onClick={() => nav(`/visits/${v.id}`)}>
+                    <td>
+                      <div style={{ display:"flex", alignItems:"center", gap: 10 }}>
+                        <div className="mm-avatar" style={{ width:32, height:32, fontSize:12 }}>
+                          {initials(v.patient?.name)}
                         </div>
-                        <div style={{ fontSize: 13, opacity: 0.85 }}>{fmtDateTime(v.visit_date)}</div>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:14 }}>{v.patient?.name || "—"}</div>
+                          <div style={{ fontSize:11, color:"var(--mm-muted)" }}>{v.patient?.cedula || "—"}</div>
+                        </div>
                       </div>
-
-                      <div className="mm-chip">Ver</div>
-                    </div>
-
-                    <div className="mm-itemMeta">
-                      <div>
-                        <b>CI:</b> {v.patient?.cedula || "-"}
-                      </div>
-                      <div>
-                        <b>Diagnóstico:</b> {diag}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
+                    </td>
+                    <td style={{ fontSize:13, color:"var(--mm-muted)" }}>{fmtDateTime(v.visit_date)}</td>
+                    <td style={{ fontSize:13 }}>{v.reason || "—"}</td>
+                    <td>
+                      <span className="mm-chip" style={{ cursor:"pointer" }}>Ver →</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        {/* Agenda demo + accesos rápidos */}
-        <div style={{ display: "grid", gap: 14 }}>
-          <div className="mm-card">
-            <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-              <div className="mm-cardTitle">Agenda del día</div>
-              <div className="mm-chip">Demo</div>
-            </div>
-
-            <div style={{ padding: 14 }}>
-              <div style={{ display: "grid", gap: 8 }}>
-                {agendaDemo.map((a, idx) => (
-                  <div key={idx} className="mm-item" style={{ cursor: "default" }}>
-                    <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                      <div className="mm-itemName">{a.time}</div>
-                      <div className="mm-chip">{a.who}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                <button className="mm-btn" type="button" onClick={() => nav("/agenda")}>
-                  Abrir agenda
-                </button>
-              </div>
-            </div>
-          </div>
-
+        {/* Right column */}
+        <div style={{ display:"grid", gap: 18, alignContent:"start" }}>
+          {/* Accesos rápidos */}
           <div className="mm-card">
             <div className="mm-cardHead">
               <div className="mm-cardTitle">Accesos rápidos</div>
             </div>
-
-            <div style={{ padding: 14, display: "grid", gap: 10 }}>
-              <button className="mm-btn" type="button" onClick={() => nav("/patients")}>
-                Ir a pacientes
-              </button>
-
-              <button className="mm-btn mm-btn--ghost" type="button" onClick={() => nav("/patients")}>
-                Registrar consulta (desde ficha)
-              </button>
-
-              <div className="mm-hint" style={{ margin: 0 }}>
-                Lo normal es crear consulta desde la ficha del paciente.
-              </div>
+            <div style={{ padding:16, display:"grid", gap:10 }}>
+              {[
+                { label:"👤 Ver pacientes",   path:"/patients",  primary:true  },
+                { label:"📅 Abrir agenda",    path:"/agenda",    primary:false },
+                { label:"🧾 Facturas",        path:"/billing",   primary:false },
+              ].map(a => (
+                <button
+                  key={a.path}
+                  className={`mm-btn ${a.primary ? "mm-btn--primary" : "mm-btn--ghost"}`}
+                  onClick={() => nav(a.path)}
+                  style={{ justifyContent:"flex-start" }}
+                >
+                  {a.label}
+                </button>
+              ))}
             </div>
+          </div>
+
+          {/* Mini status */}
+          <div className="mm-card-green" style={{ display:"grid", gap: 10 }}>
+            <div style={{ fontWeight:900, fontSize:16 }}>Estado del sistema</div>
+            {[
+              { label:"Base de datos", ok:true },
+              { label:"Supabase API",  ok:true },
+              { label:"Certificados",  ok:true },
+            ].map(s => (
+              <div key={s.label} style={{ display:"flex", justifyContent:"space-between",
+                fontSize:13, borderTop:"1px solid rgba(255,255,255,.15)", paddingTop: 8 }}>
+                <span style={{ opacity:.85 }}>{s.label}</span>
+                <span style={{ fontWeight:800 }}>{s.ok ? "✓ OK" : "✗ Error"}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

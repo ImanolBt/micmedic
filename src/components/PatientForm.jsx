@@ -3,23 +3,17 @@ import { useEffect, useMemo, useState } from "react";
 function toTextArray(csv) {
   const s = (csv || "").trim();
   if (!s) return [];
-  return s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
 function calcAgeFromBirthdate(birthdate) {
   if (!birthdate) return null;
-
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return null;
-
   const today = new Date();
   let age = today.getFullYear() - b.getFullYear();
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-
   return age >= 0 ? age : null;
 }
 
@@ -27,18 +21,12 @@ function ageLabelFromBirthdate(birthdate) {
   if (!birthdate) return "-";
   const b = new Date(birthdate);
   if (Number.isNaN(b.getTime())) return "-";
-
   const today = new Date();
   let years = today.getFullYear() - b.getFullYear();
   let months = today.getMonth() - b.getMonth();
   let days = today.getDate() - b.getDate();
-
   if (days < 0) months--;
-  if (months < 0) {
-    years--;
-    months += 12;
-  }
-
+  if (months < 0) { years--; months += 12; }
   if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
   return `${years} año(s)`;
 }
@@ -48,22 +36,17 @@ export default function PatientForm({ onCreate, disabled }) {
   const [sex, setSex] = useState("F");
   const [cedula, setCedula] = useState("");
   const [phone, setPhone] = useState("");
-
   const [birthdate, setBirthdate] = useState("");
   const [ageManual, setAgeManual] = useState("");
-
   const [allergiesCSV, setAllergiesCSV] = useState("");
   const [notes, setNotes] = useState("");
 
-  // ✅ edad calculada automáticamente si hay fecha
   const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
 
-  // ✅ si el usuario pone fecha, limpiamos edad manual para evitar inconsistencias
   useEffect(() => {
     if (birthdate) setAgeManual("");
   }, [birthdate]);
 
-  // ✅ validación de edad manual (si se usa)
   const ageManualNum = useMemo(() => {
     const s = String(ageManual || "").trim();
     if (!s) return null;
@@ -71,7 +54,6 @@ export default function PatientForm({ onCreate, disabled }) {
     return Number.isFinite(n) && n >= 0 ? n : null;
   }, [ageManual]);
 
-  // ✅ puede enviar si: nombre ok + (fecha o edadManual válida)
   const canSubmit = useMemo(() => {
     const hasName = name.trim().length >= 3;
     const hasBirthOrAge = Boolean(birthdate) || ageManualNum !== null;
@@ -79,135 +61,157 @@ export default function PatientForm({ onCreate, disabled }) {
   }, [name, birthdate, ageManualNum]);
 
   function reset() {
-    setName("");
-    setSex("F");
-    setCedula("");
-    setPhone("");
-    setBirthdate("");
-    setAgeManual("");
-    setAllergiesCSV("");
-    setNotes("");
+    setName(""); setSex("F"); setCedula(""); setPhone("");
+    setBirthdate(""); setAgeManual(""); setAllergiesCSV(""); setNotes("");
   }
 
   function submit(e) {
     e.preventDefault();
     if (!canSubmit || disabled) return;
-
-    // ✅ CORRECCIÓN: Calcular edad dentro de la función submit
     const calculatedAge = birthdate ? calcAgeFromBirthdate(birthdate) : ageManualNum;
-
     const payload = {
-      name: name.trim(),
-      sex,
+      name: name.trim(), sex,
       cedula: cedula.trim() || null,
       phone: phone.trim() || null,
       birthdate: birthdate || null,
-      age: calculatedAge, // ✅ Ahora usa la variable local calculatedAge
+      age: calculatedAge,
       allergies: toTextArray(allergiesCSV),
       notes: notes.trim() || null,
     };
-
     onCreate(payload);
     reset();
   }
 
-  // ✅ valor que se muestra en input edad
   const displayedAgeValue = useMemo(() => {
     if (birthdate && autoAge !== null) return String(autoAge);
     return String(ageManual || "");
   }, [birthdate, autoAge, ageManual]);
 
   return (
-    <form className="mm-form" onSubmit={submit}>
-      <input
-        className="mm-input"
-        placeholder="Nombre completo"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        disabled={disabled}
-      />
-
-      <div className="mm-row">
+    <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
+      {/* Nombre */}
+      <div>
+        <label className="mm-label">Nombre completo *</label>
         <input
           className="mm-input"
-          type="date"
-          value={birthdate}
-          onChange={(e) => setBirthdate(e.target.value)}
+          placeholder="Ej: María García López"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           disabled={disabled}
-          title="Fecha de nacimiento"
-        />
-
-        <input
-          className="mm-input"
-          type="number"
-          min={0}
-          step={1}
-          placeholder="Edad (si no hay fecha)"
-          value={displayedAgeValue}
-          onChange={(e) => setAgeManual(e.target.value)}
-          disabled={disabled || Boolean(birthdate)}
-          title={birthdate ? "Se calcula desde la fecha de nacimiento" : "Edad manual solo si no hay fecha"}
         />
       </div>
 
-      {/* ✅ etiqueta para bebés: meses si < 1 año */}
-      <div className="mm-hint" style={{ marginTop: -6 }}>
-        Edad calculada: <b>{birthdate ? ageLabelFromBirthdate(birthdate) : (ageManualNum !== null ? `${ageManualNum} año(s)` : "-")}</b>
+      {/* Fecha nacimiento + Edad */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <label className="mm-label">Fecha de nacimiento</label>
+          <input
+            className="mm-input"
+            type="date"
+            value={birthdate}
+            onChange={(e) => setBirthdate(e.target.value)}
+            disabled={disabled}
+          />
+        </div>
+        <div>
+          <label className="mm-label">
+            Edad {birthdate ? "(calculada)" : "(manual si no hay fecha)"}
+          </label>
+          <input
+            className="mm-input"
+            type="number"
+            min={0}
+            step={1}
+            placeholder="Ej: 34"
+            value={displayedAgeValue}
+            onChange={(e) => setAgeManual(e.target.value)}
+            disabled={disabled || Boolean(birthdate)}
+          />
+        </div>
       </div>
 
-      <div className="mm-row">
+      {birthdate && (
+        <p className="mm-hint" style={{ marginTop: -4 }}>
+          Edad calculada: <strong>{ageLabelFromBirthdate(birthdate)}</strong>
+        </p>
+      )}
+
+      {/* Cédula + Sexo */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <label className="mm-label">Cédula (opcional)</label>
+          <input
+            className="mm-input"
+            placeholder="Ej: 0501234567"
+            value={cedula}
+            onChange={(e) => setCedula(e.target.value)}
+            disabled={disabled}
+          />
+        </div>
+        <div>
+          <label className="mm-label">Sexo</label>
+          <select
+            className="mm-input"
+            value={sex}
+            onChange={(e) => setSex(e.target.value)}
+            disabled={disabled}
+          >
+            <option value="F">Femenino</option>
+            <option value="M">Masculino</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Teléfono */}
+      <div>
+        <label className="mm-label">Teléfono</label>
         <input
           className="mm-input"
-          placeholder="Cédula (opcional)"
-          value={cedula}
-          onChange={(e) => setCedula(e.target.value)}
+          placeholder="Ej: 0991234567"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
           disabled={disabled}
         />
-
-        <select
-          className="mm-input"
-          value={sex}
-          onChange={(e) => setSex(e.target.value)}
-          disabled={disabled}
-        >
-          <option value="F">Femenino</option>
-          <option value="M">Masculino</option>
-        </select>
       </div>
 
-      <input
-        className="mm-input"
-        placeholder="Teléfono (ej: 0991234567)"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        disabled={disabled}
-      />
+      {/* Alergias */}
+      <div>
+        <label className="mm-label">Alergias (separa con comas)</label>
+        <textarea
+          className="mm-input"
+          placeholder="Ej: Penicilina, Mariscos, Polen"
+          value={allergiesCSV}
+          onChange={(e) => setAllergiesCSV(e.target.value)}
+          disabled={disabled}
+          style={{ minHeight: 72, paddingTop: 10, resize: "vertical" }}
+        />
+      </div>
 
-      <textarea
-        className="mm-input"
-        placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
-        value={allergiesCSV}
-        onChange={(e) => setAllergiesCSV(e.target.value)}
-        disabled={disabled}
-        style={{ minHeight: 80, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
-      />
+      {/* Notas */}
+      <div>
+        <label className="mm-label">Notas / Antecedentes</label>
+        <textarea
+          className="mm-input"
+          placeholder="Antecedentes médicos, observaciones generales..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={disabled}
+          style={{ minHeight: 90, paddingTop: 10, resize: "vertical" }}
+        />
+      </div>
 
-      <textarea
-        className="mm-input"
-        placeholder="Notas / Evolución (opcional)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        disabled={disabled}
-        style={{ minHeight: 110, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
-      />
-
-      <button className="mm-btn" disabled={!canSubmit || disabled}>
+      <button
+        type="submit"
+        className="mm-btn mm-btn--primary"
+        disabled={!canSubmit || disabled}
+        style={{ marginTop: 4 }}
+      >
         Registrar paciente
       </button>
 
-      <div className="mm-hint">
-        La cédula es opcional. Si no se conoce, el sistema permite guardar sin ese dato.
-      </div>
+      <p className="mm-hint">
+        * Nombre y edad (o fecha de nacimiento) son obligatorios. La cédula es opcional.
+      </p>
     </form>
   );
 }
