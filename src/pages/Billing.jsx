@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../lib/supabase";
 
 const STATUS_CHIP = {
   pending:  { label: "Pendiente", cls: "mm-chip--warn" },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../lib/supabase";
 import AppointmentForm from "../components/AppointmentForm";
 
 const STATUS_CHIP = {

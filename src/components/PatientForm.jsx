@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../lib/supabase";
 
 const BLOOD_TYPES = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
 

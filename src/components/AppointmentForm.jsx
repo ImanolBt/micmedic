@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../lib/supabase";
 
 export default function AppointmentForm({ patientId, onClose, onSaved }) {
   const [patients, setPatients] = useState([]);
