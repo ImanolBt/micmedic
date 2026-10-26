@@ -1,70 +1,98 @@
-function fmtTime(iso) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
+import AppointmentForm from "./AppointmentForm";
 
-const STATUS_LABELS = {
-  scheduled: { label: "Programada", cls: "mm-chip" },
-  completed:  { label: "Completada", cls: "mm-chip mm-chip--green" },
-  cancelled:  { label: "Cancelada",  cls: "mm-chip mm-chip--red" },
+const STATUS_CHIP = {
+  scheduled: { label: "Programada", cls: "mm-chip--blue" },
+  completed:  { label: "Completada", cls: "mm-chip--green" },
+  cancelled:  { label: "Cancelada",  cls: "mm-chip--red" },
+  no_show:    { label: "No asistió", cls: "mm-chip--warn" },
 };
 
-export default function AppointmentList({ loading, items, onDelete }) {
-  if (loading) {
-    return (
-      <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--mm-muted)", fontSize: 14 }}>
-        Cargando citas...
-      </div>
-    );
-  }
+export default function AppointmentList({ patientId }) {
+  const [appts,   setAppts]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newAppt, setNewAppt] = useState(false);
 
-  if (!items || items.length === 0) {
-    return (
-      <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--mm-muted)", fontSize: 14 }}>
-        No hay citas para ese día.
-      </div>
-    );
-  }
+  const load = async () => {
+    setLoading(true);
+    let q = supabase.from("appointments").select("*, patients(first_name, last_name)").order("date", { ascending: false });
+    if (patientId) q = q.eq("patient_id", patientId);
+    const { data } = await q.limit(50);
+    setAppts(data ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [patientId]);
+
+  const fmt = (d, t) => {
+    if (!d) return "—";
+    const dateStr = new Date(d + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+    return t ? `${dateStr} · ${t.slice(0, 5)}` : dateStr;
+  };
+
+  const updateStatus = async (id, status) => {
+    await supabase.from("appointments").update({ status }).eq("id", id);
+    load();
+  };
 
   return (
-    <table className="mm-table">
-      <thead>
-        <tr>
-          <th>Hora</th>
-          <th>Paciente</th>
-          <th>Motivo</th>
-          <th>Teléfono</th>
-          <th>Estado</th>
-          <th style={{ textAlign: "right" }}></th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((a) => {
-          const patientName = a.patients?.name || "Paciente";
-          const patientPhone = a.patients?.phone || null;
-          const status = STATUS_LABELS[a.status] || { label: a.status, cls: "mm-chip" };
+    <div>
+      <div className="mm-card" style={{ padding: 0 }}>
+        <div className="mm-card-accent-bar" />
+        <div className="mm-section-head">
+          <div className="mm-card-title">Citas ({appts.length})</div>
+          <button onClick={() => setNewAppt(true)} className="mm-btn mm-btn--sm">＋ Nueva cita</button>
+        </div>
+        <div className="mm-table-wrap">
+          <table className="mm-table">
+            <thead>
+              <tr>
+                {!patientId && <th>Paciente</th>}
+                <th>Fecha / Hora</th>
+                <th>Motivo</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--c-muted)", padding: "32px 0" }}>Cargando…</td></tr>
+              ) : appts.length === 0 ? (
+                <tr><td colSpan={5}><div className="mm-empty">Sin citas registradas</div></td></tr>
+              ) : appts.map(a => {
+                const chip = STATUS_CHIP[a.status] ?? { label: a.status, cls: "" };
+                return (
+                  <tr key={a.id}>
+                    {!patientId && <td style={{ fontWeight: 600 }}>{a.patients?.first_name} {a.patients?.last_name}</td>}
+                    <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(a.date, a.time)}</td>
+                    <td style={{ color: "var(--c-text-2)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {a.reason || "—"}
+                    </td>
+                    <td><span className={`mm-chip ${chip.cls}`}>{chip.label}</span></td>
+                    <td>
+                      {a.status === "scheduled" && (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => updateStatus(a.id, "completed")} className="mm-btn mm-btn--sm" style={{ padding: "4px 10px", fontSize: 11 }}>✓</button>
+                          <button onClick={() => updateStatus(a.id, "cancelled")} className="mm-btn mm-btn--danger mm-btn--sm" style={{ padding: "4px 10px", fontSize: 11 }}>✕</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-          return (
-            <tr key={a.id}>
-              <td style={{ whiteSpace: "nowrap", fontWeight: 600, fontSize: 13 }}>
-                {fmtTime(a.start_at)} – {fmtTime(a.end_at)}
-              </td>
-              <td style={{ fontWeight: 500 }}>{patientName}</td>
-              <td style={{ color: "var(--mm-muted)", fontSize: 13 }}>{a.reason}</td>
-              <td style={{ color: "var(--mm-muted)", fontSize: 13 }}>{patientPhone || "—"}</td>
-              <td><span className={status.cls}>{status.label}</span></td>
-              <td style={{ textAlign: "right" }}>
-                <button className="mm-btn mm-btn--ghost mm-btn--sm"
-                  onClick={() => onDelete(a.id)} type="button">
-                  Eliminar
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+      {newAppt && (
+        <AppointmentForm
+          patientId={patientId}
+          onClose={() => setNewAppt(false)}
+          onSaved={() => { setNewAppt(false); load(); }}
+        />
+      )}
+    </div>
   );
 }

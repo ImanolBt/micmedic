@@ -1,104 +1,103 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
 
-function toISOFromDateTime(dateStr, timeStr) {
-  const d = new Date(`${dateStr}T${timeStr}:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
+export default function AppointmentForm({ patientId, onClose, onSaved }) {
+  const [patients, setPatients] = useState([]);
+  const [form, setForm] = useState({
+    patient_id: patientId ?? "",
+    date:       new Date().toISOString().slice(0, 10),
+    time:       "09:00",
+    duration:   30,
+    reason:     "",
+    notes:      "",
+    status:     "scheduled",
+  });
+  const [error,  setError]  = useState("");
+  const [saving, setSaving] = useState(false);
 
-export default function AppointmentForm({ patients, onCreate, disabled }) {
-  const [patientId, setPatientId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState("09:00");
-  const [durationMin, setDurationMin] = useState(30);
-  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (!patientId) {
+      supabase.from("patients").select("id, first_name, last_name").order("last_name").then(({ data }) => setPatients(data ?? []));
+    }
+  }, [patientId]);
 
-  const canSubmit = useMemo(() => {
-    return (
-      String(patientId).trim() !== "" &&
-      date && date.length === 10 &&
-      time && time.length >= 4 &&
-      reason.trim().length >= 3 &&
-      Number(durationMin) >= 5 && Number(durationMin) <= 240
-    );
-  }, [patientId, date, time, reason, durationMin]);
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  function reset() {
-    setPatientId("");
-    setTime("09:00");
-    setDurationMin(30);
-    setReason("");
-  }
-
-  function submit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!canSubmit || disabled) return;
-    const startISO = toISOFromDateTime(date, time);
-    if (!startISO) return alert("Fecha/hora inválida.");
-    const startLocal = new Date(`${date}T${time}:00`);
-    const endLocal = new Date(startLocal.getTime() + Number(durationMin) * 60000);
-    onCreate({
-      patient_id: Number(patientId),
-      start_at: startISO,
-      end_at: endLocal.toISOString(),
-      reason: reason.trim(),
-      status: "scheduled",
+    if (!form.patient_id) { setError("Selecciona un paciente."); return; }
+    if (!form.date)        { setError("La fecha es obligatoria."); return; }
+    setSaving(true); setError("");
+    const { error: err } = await supabase.from("appointments").insert({
+      patient_id: form.patient_id,
+      date:       form.date,
+      time:       form.time || null,
+      duration:   parseInt(form.duration),
+      reason:     form.reason || null,
+      notes:      form.notes  || null,
+      status:     form.status,
     });
-    reset();
-  }
-
-  const inputLabel = { fontSize: 12, color: "var(--mm-muted)", marginBottom: 4, display: "block" };
+    if (err) { setError(err.message); setSaving(false); return; }
+    onSaved();
+  };
 
   return (
-    <div className="mm-card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ height: 4, background: "linear-gradient(90deg,var(--mm-green),var(--mm-green2))" }} />
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--mm-border)" }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>Nueva cita</div>
-        <div style={{ fontSize: 12, color: "var(--mm-muted)", marginTop: 2 }}>
-          Consejo: usa 20–30 min para mantener el día ordenado
+    <div className="mm-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="mm-modal">
+        <div className="mm-modal-head">
+          <span className="mm-modal-title">📅 Nueva cita</span>
+          <button onClick={onClose} className="mm-icon-btn">✕</button>
         </div>
+        <form onSubmit={handleSubmit} className="mm-modal-body">
+          {!patientId && (
+            <div className="mm-field">
+              <label className="mm-label">Paciente *</label>
+              <select className="mm-input" value={form.patient_id} onChange={set("patient_id")} required>
+                <option value="">— Seleccionar paciente —</option>
+                {patients.map(p => (
+                  <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="mm-row-3">
+            <div className="mm-field">
+              <label className="mm-label">Fecha *</label>
+              <input className="mm-input" type="date" value={form.date} onChange={set("date")} required />
+            </div>
+            <div className="mm-field">
+              <label className="mm-label">Hora</label>
+              <input className="mm-input" type="time" value={form.time} onChange={set("time")} />
+            </div>
+            <div className="mm-field">
+              <label className="mm-label">Duración (min)</label>
+              <select className="mm-input" value={form.duration} onChange={set("duration")}>
+                {[15,20,30,45,60,90].map(d => <option key={d} value={d}>{d} min</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="mm-field">
+            <label className="mm-label">Motivo</label>
+            <input className="mm-input" value={form.reason} onChange={set("reason")} placeholder="Consulta general, seguimiento…" />
+          </div>
+
+          <div className="mm-field">
+            <label className="mm-label">Notas</label>
+            <textarea className="mm-input" rows={2} value={form.notes} onChange={set("notes")} placeholder="Indicaciones previas, preparación…" />
+          </div>
+
+          {error && <div className="mm-alert mm-alert--error">⚠️ {error}</div>}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button type="button" onClick={onClose} className="mm-btn mm-btn--ghost">Cancelar</button>
+            <button type="submit" className="mm-btn" disabled={saving}>
+              {saving ? "Guardando…" : "Agendar cita"}
+            </button>
+          </div>
+        </form>
       </div>
-      <form onSubmit={submit} style={{ padding: "14px 16px", display: "grid", gap: 12 }}>
-        <div>
-          <label style={inputLabel}>Paciente</label>
-          <select className="mm-input" value={patientId}
-            onChange={(e) => setPatientId(e.target.value)} disabled={disabled}>
-            <option value="">Selecciona un paciente…</option>
-            {patients?.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} — {p.cedula}</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <div>
-            <label style={inputLabel}>Fecha</label>
-            <input className="mm-input" type="date" value={date}
-              onChange={(e) => setDate(e.target.value)} disabled={disabled} />
-          </div>
-          <div>
-            <label style={inputLabel}>Hora</label>
-            <input className="mm-input" type="time" value={time}
-              onChange={(e) => setTime(e.target.value)} disabled={disabled} />
-          </div>
-          <div>
-            <label style={inputLabel}>Duración (min)</label>
-            <input className="mm-input" type="number" min={5} max={240}
-              value={durationMin} onChange={(e) => setDurationMin(e.target.value)}
-              disabled={disabled} placeholder="Ej: 30" />
-          </div>
-        </div>
-
-        <div>
-          <label style={inputLabel}>Motivo</label>
-          <input className="mm-input" placeholder="Ej: Control, Dolor, Consulta general…"
-            value={reason} onChange={(e) => setReason(e.target.value)} disabled={disabled} />
-        </div>
-
-        <button className="mm-btn" disabled={!canSubmit || disabled}>
-          ✓ Crear cita
-        </button>
-      </form>
     </div>
   );
 }

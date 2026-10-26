@@ -1,95 +1,102 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
-
-function startOfTodayISO() { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); }
-function endOfTodayISO()   { const d = new Date(); d.setHours(23,59,59,999); return d.toISOString(); }
-function fmtDateTime(iso) {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("es-EC", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
-}
-function initials(name = "") {
-  return name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase() || "?";
-}
+import { supabase } from "../supabaseClient";
 
 const KPI_DEFS = [
-  { key:"patients", label:"Total pacientes", icon:"👤", sub:"registrados" },
-  { key:"visits",   label:"Consultas hoy",   icon:"🩺", sub:"hoy"         },
-  { key:"certs",    label:"Certificados",     icon:"📄", sub:"hoy"         },
-  { key:"rx",       label:"Recetas",          icon:"💊", sub:"hoy"         },
+  { key: "patients",     label: "Pacientes",         icon: "👥", sub: "Total registrados", color: "var(--c-brand)" },
+  { key: "today",        label: "Citas hoy",          icon: "📅", sub: "Programadas",       color: "var(--c-info)" },
+  { key: "month",        label: "Consultas mes",      icon: "🩺", sub: "Último período",    color: "var(--c-warn)" },
+  { key: "pending",      label: "Facturas pendientes",icon: "💳", sub: "Por cobrar",        color: "var(--c-danger)" },
 ];
 
 export default function Dashboard() {
-  const nav = useNavigate();
+  const [kpis, setKpis]       = useState({ patients: "—", today: "—", month: "—", pending: "—" });
+  const [visits, setVisits]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [kpis, setKpis] = useState({ patients:0, visits:0, certs:0, rx:0 });
-  const [recentVisits, setRecentVisits] = useState([]);
-  const today = useMemo(() => {
-    const d = new Date();
-    return d.toLocaleDateString("es-EC", { weekday:"long", day:"numeric", month:"long" });
-  }, []);
+  const navigate = useNavigate();
 
-  async function load() {
+  const today = new Date().toISOString().slice(0, 10);
+  const now   = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const load = async () => {
     setLoading(true);
-    const from = startOfTodayISO(), to = endOfTodayISO();
-    const [p, vT, cT, rT] = await Promise.all([
-      supabase.from("patients").select("id", { count:"exact", head:true }),
-      supabase.from("medical_visits").select("id", { count:"exact", head:true }).gte("visit_date", from).lte("visit_date", to),
-      supabase.from("certificates").select("id", { count:"exact", head:true }).gte("date", from).lte("date", to),
-      supabase.from("prescriptions").select("id", { count:"exact", head:true }).gte("date", from).lte("date", to),
+    const [
+      { count: patients },
+      { count: todayCnt },
+      { count: month },
+      { count: pending },
+      { data: recentVisits },
+    ] = await Promise.all([
+      supabase.from("patients").select("*", { count: "exact", head: true }),
+      supabase.from("appointments").select("*", { count: "exact", head: true }).eq("date", today),
+      supabase.from("appointments").select("*", { count: "exact", head: true }).gte("date", firstOfMonth),
+      supabase.from("invoices").select("*", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("visits")
+        .select("id, visit_date, chief_complaint, patients(first_name, last_name)")
+        .order("visit_date", { ascending: false })
+        .limit(8),
     ]);
-    setKpis({ patients: p.count||0, visits: vT.count||0, certs: cT.count||0, rx: rT.count||0 });
-
-    const v = await supabase.from("medical_visits")
-      .select("id, patient_id, visit_date, reason")
-      .order("visit_date", { ascending:false }).limit(8);
-    const rows = v.data || [];
-    const ids = [...new Set(rows.map(x => x.patient_id).filter(Boolean))];
-    let pMap = {};
-    if (ids.length) {
-      const pp = await supabase.from("patients").select("id, name, cedula").in("id", ids);
-      pMap = Object.fromEntries((pp.data||[]).map(x=>[x.id,x]));
-    }
-    setRecentVisits(rows.map(x => ({ ...x, patient: pMap[x.patient_id]||null })));
+    setKpis({
+      patients: patients ?? "—",
+      today:    todayCnt ?? "—",
+      month:    month ?? "—",
+      pending:  pending ?? "—",
+    });
+    setVisits(recentVisits ?? []);
     setLoading(false);
-  }
+  };
 
-  useEffect(() => { load(); }, []); // eslint-disable-line
+  useEffect(() => { load(); }, []);
+
+  const fmt = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  };
 
   return (
     <div className="mm-page">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="mm-page-header">
         <div>
           <h1 className="mm-page-title">Dashboard</h1>
-          <div className="mm-page-sub" style={{ textTransform:"capitalize" }}>{today}</div>
+          <p className="mm-page-sub">
+            {new Date().toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          </p>
         </div>
-        <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={load}>↻ Actualizar</button>
+        <button onClick={load} className="mm-btn mm-btn--ghost mm-btn--sm">
+          ↻ Actualizar
+        </button>
       </div>
 
-      {/* ── KPI tiles ── */}
+      {/* KPIs */}
       <div className="mm-kpi-grid">
         {KPI_DEFS.map(k => (
           <div key={k.key} className="mm-kpi">
             <div className="mm-kpi-icon">{k.icon}</div>
             <div className="mm-kpi-label">{k.label}</div>
-            <div className="mm-kpi-value">{loading ? "—" : kpis[k.key]}</div>
+            <div className="mm-kpi-value">
+              {loading ? <span style={{ fontSize: 18, opacity: .4 }}>…</span> : kpis[k.key]}
+            </div>
             <div className="mm-kpi-badge">● {k.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Grid 2 columnas: tabla + accesos ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 280px", gap:20, alignItems:"start" }}>
-
-        {/* Últimas consultas */}
-        <div className="mm-card" style={{ padding:0, overflow:"hidden" }}>
-          <div style={{ padding:"16px 20px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      {/* Content grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20, alignItems: "start" }}>
+        {/* Visitas recientes */}
+        <div className="mm-card" style={{ padding: 0 }}>
+          <div className="mm-card-accent-bar" />
+          <div className="mm-section-head">
             <div>
-              <div className="mm-card-title">Últimas consultas</div>
-              <div className="mm-card-sub">Historial más reciente</div>
+              <div className="mm-card-title">Consultas recientes</div>
+              <div className="mm-card-sub">Últimas 8 visitas registradas</div>
             </div>
-            <span className="mm-chip mm-chip--green">{recentVisits.length} registros</span>
+            <button onClick={() => navigate("/patients")} className="mm-btn mm-btn--ghost mm-btn--sm">
+              Ver pacientes →
+            </button>
           </div>
           <div className="mm-table-wrap">
             <table className="mm-table">
@@ -98,30 +105,22 @@ export default function Dashboard() {
                   <th>Paciente</th>
                   <th>Fecha</th>
                   <th>Motivo</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--muted)", padding:32 }}>Cargando...</td></tr>
-                ) : recentVisits.length === 0 ? (
-                  <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--muted)", padding:32 }}>Sin consultas</td></tr>
-                ) : recentVisits.map(v => (
-                  <tr key={v.id} className="mm-table-click" onClick={() => nav(`/visits/${v.id}`)}>
-                    <td>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div className="mm-avatar" style={{ width:30, height:30, fontSize:11 }}>
-                          {initials(v.patient?.name || "")}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight:600, fontSize:13 }}>{v.patient?.name || "—"}</div>
-                          <div style={{ fontSize:11, color:"var(--muted)" }}>{v.patient?.cedula || ""}</div>
-                        </div>
-                      </div>
+                  <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--c-muted)", padding: "32px 0" }}>Cargando…</td></tr>
+                ) : visits.length === 0 ? (
+                  <tr><td colSpan={3}><div className="mm-empty">Sin consultas registradas</div></td></tr>
+                ) : visits.map(v => (
+                  <tr key={v.id} className="mm-table-click" onClick={() => navigate("/patients")}>
+                    <td style={{ fontWeight: 600 }}>
+                      {v.patients?.first_name} {v.patients?.last_name}
                     </td>
-                    <td style={{ fontSize:12, color:"var(--muted)", whiteSpace:"nowrap" }}>{fmtDateTime(v.visit_date)}</td>
-                    <td style={{ fontSize:13, maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{v.reason}</td>
-                    <td><span style={{ color:"var(--green)", fontWeight:700, fontSize:12 }}>Ver →</span></td>
+                    <td style={{ color: "var(--c-muted)", fontSize: 13 }}>{fmt(v.visit_date)}</td>
+                    <td style={{ color: "var(--c-text-2)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {v.chief_complaint || "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -129,24 +128,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Accesos rápidos */}
-        <div style={{ display:"grid", gap:12 }}>
+        {/* Acceso rápido */}
+        <div style={{ display: "grid", gap: 14 }}>
           <div className="mm-card">
-            <div className="mm-card-title" style={{ marginBottom:14 }}>Accesos rápidos</div>
-            <div style={{ display:"grid", gap:8 }}>
-              <button className="mm-btn" style={{ width:"100%", justifyContent:"flex-start" }}
-                onClick={() => nav("/patients")}>
-                👤 Ver pacientes
-              </button>
-              <button className="mm-btn mm-btn--ghost" style={{ width:"100%", justifyContent:"flex-start" }}
-                onClick={() => nav("/agenda")}>
-                📅 Abrir agenda
-              </button>
-              <button className="mm-btn mm-btn--ghost" style={{ width:"100%", justifyContent:"flex-start" }}
-                onClick={() => nav("/billing")}>
-                🧾 Facturación
-              </button>
+            <div className="mm-card-head">
+              <span className="mm-card-title">Acceso rápido</span>
             </div>
+            {[
+              { label: "Nuevo paciente",   icon: "➕", path: "/patients" },
+              { label: "Nueva cita",        icon: "📅", path: "/agenda" },
+              { label: "Ver facturación",   icon: "💳", path: "/billing" },
+            ].map(a => (
+              <button
+                key={a.path}
+                onClick={() => navigate(a.path)}
+                className="mm-btn mm-btn--ghost"
+                style={{ width: "100%", justifyContent: "flex-start", marginBottom: 8 }}
+              >
+                <span>{a.icon}</span> {a.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mm-card" style={{ background: "linear-gradient(135deg, var(--c-brand), var(--c-brand-dark))", border: "none" }}>
+            <div style={{ color: "rgba(255,255,255,.8)", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>SISTEMA</div>
+            <div style={{ color: "white", fontWeight: 800, fontSize: 15, marginBottom: 6 }}>MicMEDIC</div>
+            <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12 }}>Gestión médica para Dra. Daniela Romo</div>
           </div>
         </div>
       </div>

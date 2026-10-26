@@ -1,66 +1,86 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../supabaseClient";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  async function handleLogin(e) {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
+    setError(""); setLoading(true);
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) setError(err.message);
     setLoading(false);
-  }
+  };
 
   return (
     <div className="mm-login-bg">
       <div className="mm-login-card">
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 32 }}>
           <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: "linear-gradient(135deg, var(--green), var(--green-dk))",
-            display: "grid", placeItems: "center", fontSize: 22, color: "white",
-            boxShadow: "0 4px 16px rgba(122,166,60,.35)"
+            width: 56, height: 56, borderRadius: 18,
+            background: "linear-gradient(135deg, var(--c-brand), var(--c-brand-dark))",
+            display: "grid", placeItems: "center", fontSize: 26,
+            boxShadow: "0 4px 18px rgba(111,168,50,.4)"
           }}>🏥</div>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: "-.4px" }}>MicMEDIC</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Sistema médico</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-.5px", color: "var(--c-text)" }}>MicMEDIC</div>
+            <div style={{ fontSize: 13, color: "var(--c-muted)", marginTop: 2 }}>Sistema de Gestión Médica</div>
           </div>
         </div>
 
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Bienvenida, Dra. Romo</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>Ingresa tus credenciales para continuar</p>
-        </div>
+        <h1 style={{ fontSize: 18, fontWeight: 800, textAlign: "center", marginBottom: 24, color: "var(--c-text)" }}>
+          Bienvenida, Dra. Romo
+        </h1>
 
-        <form onSubmit={handleLogin} style={{ display: "grid", gap: 14 }}>
-          <div>
+        <form onSubmit={handleLogin} style={{ display: "grid", gap: 16 }}>
+          <div className="mm-field">
             <label className="mm-label">Correo electrónico</label>
-            <input className="mm-input" type="email" placeholder="correo@ejemplo.com"
-              value={email} onChange={e => setEmail(e.target.value)} required />
+            <input
+              className="mm-input"
+              type="email"
+              placeholder="doctora@ejemplo.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
           </div>
-          <div>
+
+          <div className="mm-field">
             <label className="mm-label">Contraseña</label>
-            <input className="mm-input" type="password" placeholder="••••••••"
-              value={password} onChange={e => setPassword(e.target.value)} required />
+            <input
+              className="mm-input"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
           </div>
 
           {error && (
-            <div style={{ padding: "10px 14px", borderRadius: 10, background: "#fef2f2",
-              color: "#c53030", fontSize: 13, border: "1px solid #fecaca" }}>
-              {error}
+            <div className="mm-alert mm-alert--error">
+              <span>⚠️</span> {error}
             </div>
           )}
 
-          <button className="mm-btn mm-btn--lg" disabled={loading} style={{ width: "100%", marginTop: 4 }}>
-            {loading ? "Ingresando..." : "Ingresar →"}
+          <button
+            type="submit"
+            className="mm-btn mm-btn--lg mm-btn--full"
+            disabled={loading}
+            style={{ marginTop: 4 }}
+          >
+            {loading ? "Entrando…" : "Iniciar sesión →"}
           </button>
         </form>
+
+        <p style={{ textAlign: "center", fontSize: 12, color: "var(--c-muted)", marginTop: 24 }}>
+          MicMEDIC · Uso exclusivo autorizado
+        </p>
       </div>
     </div>
   );
