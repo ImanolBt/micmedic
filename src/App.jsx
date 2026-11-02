@@ -6,12 +6,14 @@ import Dashboard from "./pages/Dashboard";
 import Patients from "./pages/Patients";
 import Agenda from "./pages/Agenda";
 import Billing from "./pages/Billing";
+import FarmaciaCaja from "./pages/FarmaciaCaja";
 
 const NAV = [
   { to: "/dashboard", icon: "📊", label: "Dashboard" },
   { to: "/patients",  icon: "👥", label: "Pacientes" },
   { to: "/agenda",    icon: "📅", label: "Agenda" },
   { to: "/billing",   icon: "💳", label: "Facturación" },
+  { to: "/caja",      icon: "🧾", label: "Farmacia & Caja" },
 ];
 
 export default function App() {
@@ -83,6 +85,7 @@ export default function App() {
           <Route path="/patients/*" element={<Patients />} />
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/billing" element={<Billing />} />
+          <Route path="/caja" element={<FarmaciaCaja />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
