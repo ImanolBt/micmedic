@@ -1,124 +1,213 @@
-import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { useEffect, useMemo, useState } from "react";
 
-const BLOOD_TYPES = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+function toTextArray(csv) {
+  const s = (csv || "").trim();
+  if (!s) return [];
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
-export default function PatientForm({ patient, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    first_name:    patient?.first_name    ?? "",
-    last_name:     patient?.last_name     ?? "",
-    date_of_birth: patient?.date_of_birth ?? "",
-    gender:        patient?.gender        ?? "",
-    phone:         patient?.phone         ?? "",
-    email:         patient?.email         ?? "",
-    address:       patient?.address       ?? "",
-    blood_type:    patient?.blood_type    ?? "",
-    allergies:     patient?.allergies     ?? "",
-    notes:         patient?.notes         ?? "",
-    curp:          patient?.curp          ?? "",
-  });
-  const [error,   setError]   = useState("");
-  const [saving,  setSaving]  = useState(false);
+function calcAgeFromBirthdate(birthdate) {
+  if (!birthdate) return null;
 
-  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return null;
 
-  const handleSubmit = async (e) => {
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+
+  return age >= 0 ? age : null;
+}
+
+function ageLabelFromBirthdate(birthdate) {
+  if (!birthdate) return "-";
+  const b = new Date(birthdate);
+  if (Number.isNaN(b.getTime())) return "-";
+
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  let months = today.getMonth() - b.getMonth();
+  let days = today.getDate() - b.getDate();
+
+  if (days < 0) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years <= 0) return `${Math.max(months, 0)} mes(es)`;
+  return `${years} año(s)`;
+}
+
+export default function PatientForm({ onCreate, disabled }) {
+  const [name, setName] = useState("");
+  const [sex, setSex] = useState("F");
+  const [cedula, setCedula] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [birthdate, setBirthdate] = useState("");
+  const [ageManual, setAgeManual] = useState("");
+
+  const [allergiesCSV, setAllergiesCSV] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // ✅ edad calculada automáticamente si hay fecha
+  const autoAge = useMemo(() => calcAgeFromBirthdate(birthdate), [birthdate]);
+
+  // ✅ si el usuario pone fecha, limpiamos edad manual para evitar inconsistencias
+  useEffect(() => {
+    if (birthdate) setAgeManual("");
+  }, [birthdate]);
+
+  // ✅ validación de edad manual (si se usa)
+  const ageManualNum = useMemo(() => {
+    const s = String(ageManual || "").trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }, [ageManual]);
+
+  // ✅ puede enviar si: nombre ok + (fecha o edadManual válida)
+  const canSubmit = useMemo(() => {
+    const hasName = name.trim().length >= 3;
+    const hasBirthOrAge = Boolean(birthdate) || ageManualNum !== null;
+    return hasName && hasBirthOrAge;
+  }, [name, birthdate, ageManualNum]);
+
+  function reset() {
+    setName("");
+    setSex("F");
+    setCedula("");
+    setPhone("");
+    setBirthdate("");
+    setAgeManual("");
+    setAllergiesCSV("");
+    setNotes("");
+  }
+
+  function submit(e) {
     e.preventDefault();
-    if (!form.first_name.trim() || !form.last_name.trim()) {
-      setError("Nombre y apellido son obligatorios."); return;
-    }
-    setSaving(true); setError("");
-    const payload = { ...form };
-    const { error: err } = patient
-      ? await supabase.from("patients").update(payload).eq("id", patient.id)
-      : await supabase.from("patients").insert(payload);
-    if (err) { setError(err.message); setSaving(false); return; }
-    onSaved();
-  };
+    if (!canSubmit || disabled) return;
+
+    // ✅ CORRECCIÓN: Calcular edad dentro de la función submit
+    const calculatedAge = birthdate ? calcAgeFromBirthdate(birthdate) : ageManualNum;
+
+    const payload = {
+      name: name.trim(),
+      sex,
+      cedula: cedula.trim() || null,
+      phone: phone.trim() || null,
+      birthdate: birthdate || null,
+      age: calculatedAge, // ✅ Ahora usa la variable local calculatedAge
+      allergies: toTextArray(allergiesCSV),
+      notes: notes.trim() || null,
+    };
+
+    onCreate(payload);
+    reset();
+  }
+
+  // ✅ valor que se muestra en input edad
+  const displayedAgeValue = useMemo(() => {
+    if (birthdate && autoAge !== null) return String(autoAge);
+    return String(ageManual || "");
+  }, [birthdate, autoAge, ageManual]);
 
   return (
-    <div className="mm-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="mm-modal mm-modal--wide">
-        <div className="mm-modal-head">
-          <span className="mm-modal-title">{patient ? "Editar paciente" : "Nuevo paciente"}</span>
-          <button onClick={onClose} className="mm-icon-btn">✕</button>
-        </div>
-        <form onSubmit={handleSubmit} className="mm-modal-body">
-          <div className="mm-row-2">
-            <div className="mm-field">
-              <label className="mm-label">Nombre *</label>
-              <input className="mm-input" value={form.first_name} onChange={set("first_name")} placeholder="Nombre(s)" required />
-            </div>
-            <div className="mm-field">
-              <label className="mm-label">Apellido *</label>
-              <input className="mm-input" value={form.last_name} onChange={set("last_name")} placeholder="Apellido(s)" required />
-            </div>
-          </div>
+    <form className="mm-form" onSubmit={submit}>
+      <input
+        className="mm-input"
+        placeholder="Nombre completo"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        disabled={disabled}
+      />
 
-          <div className="mm-row-3">
-            <div className="mm-field">
-              <label className="mm-label">Fecha de nacimiento</label>
-              <input className="mm-input" type="date" value={form.date_of_birth} onChange={set("date_of_birth")} />
-            </div>
-            <div className="mm-field">
-              <label className="mm-label">Sexo</label>
-              <select className="mm-input" value={form.gender} onChange={set("gender")}>
-                <option value="">— Seleccionar —</option>
-                <option value="F">Femenino</option>
-                <option value="M">Masculino</option>
-                <option value="O">Otro</option>
-              </select>
-            </div>
-            <div className="mm-field">
-              <label className="mm-label">Tipo de sangre</label>
-              <select className="mm-input" value={form.blood_type} onChange={set("blood_type")}>
-                <option value="">— Seleccionar —</option>
-                {BLOOD_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
+      <div className="mm-row">
+        <input
+          className="mm-input"
+          type="date"
+          value={birthdate}
+          onChange={(e) => setBirthdate(e.target.value)}
+          disabled={disabled}
+          title="Fecha de nacimiento"
+        />
 
-          <div className="mm-row-2">
-            <div className="mm-field">
-              <label className="mm-label">Teléfono</label>
-              <input className="mm-input" value={form.phone} onChange={set("phone")} placeholder="55 1234 5678" />
-            </div>
-            <div className="mm-field">
-              <label className="mm-label">Correo electrónico</label>
-              <input className="mm-input" type="email" value={form.email} onChange={set("email")} placeholder="paciente@ejemplo.com" />
-            </div>
-          </div>
-
-          <div className="mm-field">
-            <label className="mm-label">CURP</label>
-            <input className="mm-input" value={form.curp} onChange={set("curp")} placeholder="XXXX000000XXXXXX00" maxLength={18} />
-          </div>
-
-          <div className="mm-field">
-            <label className="mm-label">Dirección</label>
-            <input className="mm-input" value={form.address} onChange={set("address")} placeholder="Calle, colonia, ciudad" />
-          </div>
-
-          <div className="mm-field">
-            <label className="mm-label">Alergias</label>
-            <textarea className="mm-input" rows={2} value={form.allergies} onChange={set("allergies")} placeholder="Penicilina, latex…" />
-          </div>
-
-          <div className="mm-field">
-            <label className="mm-label">Notas adicionales</label>
-            <textarea className="mm-input" rows={2} value={form.notes} onChange={set("notes")} placeholder="Antecedentes relevantes…" />
-          </div>
-
-          {error && <div className="mm-alert mm-alert--error">⚠️ {error}</div>}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
-            <button type="button" onClick={onClose} className="mm-btn mm-btn--ghost">Cancelar</button>
-            <button type="submit" className="mm-btn" disabled={saving}>
-              {saving ? "Guardando…" : patient ? "Guardar cambios" : "Crear paciente"}
-            </button>
-          </div>
-        </form>
+        <input
+          className="mm-input"
+          type="number"
+          min={0}
+          step={1}
+          placeholder="Edad (si no hay fecha)"
+          value={displayedAgeValue}
+          onChange={(e) => setAgeManual(e.target.value)}
+          disabled={disabled || Boolean(birthdate)}
+          title={birthdate ? "Se calcula desde la fecha de nacimiento" : "Edad manual solo si no hay fecha"}
+        />
       </div>
-    </div>
+
+      {/* ✅ etiqueta para bebés: meses si < 1 año */}
+      <div className="mm-hint" style={{ marginTop: -6 }}>
+        Edad calculada: <b>{birthdate ? ageLabelFromBirthdate(birthdate) : (ageManualNum !== null ? `${ageManualNum} año(s)` : "-")}</b>
+      </div>
+
+      <div className="mm-row">
+        <input
+          className="mm-input"
+          placeholder="Cédula (opcional)"
+          value={cedula}
+          onChange={(e) => setCedula(e.target.value)}
+          disabled={disabled}
+        />
+
+        <select
+          className="mm-input"
+          value={sex}
+          onChange={(e) => setSex(e.target.value)}
+          disabled={disabled}
+        >
+          <option value="F">Femenino</option>
+          <option value="M">Masculino</option>
+        </select>
+      </div>
+
+      <input
+        className="mm-input"
+        placeholder="Teléfono (ej: 0991234567)"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        disabled={disabled}
+      />
+
+      <textarea
+        className="mm-input"
+        placeholder="Alergias (separa con comas). Ej: Penicilina, Mariscos"
+        value={allergiesCSV}
+        onChange={(e) => setAllergiesCSV(e.target.value)}
+        disabled={disabled}
+        style={{ minHeight: 80, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
+      />
+
+      <textarea
+        className="mm-input"
+        placeholder="Notas / Evolución (opcional)"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        disabled={disabled}
+        style={{ minHeight: 110, paddingTop: 10, resize: "vertical", whiteSpace: "pre-wrap" }}
+      />
+
+      <button className="mm-btn" disabled={!canSubmit || disabled}>
+        Registrar paciente
+      </button>
+
+      <div className="mm-hint">
+        La cédula es opcional. Si no se conoce, el sistema permite guardar sin ese dato.
+      </div>
+    </form>
   );
 }

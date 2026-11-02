@@ -1,156 +1,141 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const STATUS_CHIP = {
-  pending:  { label: "Pendiente", cls: "mm-chip--warn" },
-  paid:     { label: "Pagada",    cls: "mm-chip--green" },
-  cancelled:{ label: "Cancelada", cls: "mm-chip--red" },
-  overdue:  { label: "Vencida",   cls: "mm-chip--red" },
-};
+function clean(s) {
+  return (s || "").toString().trim();
+}
 
 export default function Billing() {
-  const [invoices, setInvoices] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [filter,   setFilter]   = useState("all");
-  const [stats,    setStats]    = useState({ total: 0, paid: 0, pending: 0, overdue: 0 });
+  const [loading, setLoading] = useState(true);
+  const [patients, setPatients] = useState([]);
+  const [q, setQ] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    let q = supabase
-      .from("invoices")
-      .select("*, patients(first_name, last_name)")
-      .order("created_at", { ascending: false });
-    if (filter !== "all") q = q.eq("status", filter);
-    const { data } = await q.limit(100);
-    const all = data ?? [];
-    setInvoices(all);
-
-    // Calcular stats
-    const { data: allInv } = await supabase.from("invoices").select("status, amount");
-    const inv = allInv ?? [];
-    setStats({
-      total:   inv.reduce((s, i) => s + (i.amount ?? 0), 0),
-      paid:    inv.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount ?? 0), 0),
-      pending: inv.filter(i => i.status === "pending").length,
-      overdue: inv.filter(i => i.status === "overdue").length,
+  const filtered = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return patients;
+    return patients.filter((p) => {
+      const name = (p.name || "").toLowerCase();
+      const ced = (p.cedula || "").toLowerCase();
+      return name.includes(t) || ced.includes(t);
     });
-    setLoading(false);
-  };
+  }, [patients, q]);
 
-  useEffect(() => { load(); }, [filter]);
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      const res = await supabase
+        .from("patients")
+        .select("id, name, cedula, phone, email, address")
+        .order("id", { ascending: false })
+        .limit(300);
 
-  const markPaid = async (id) => {
-    await supabase.from("invoices").update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", id);
+      if (!mounted) return;
+
+      if (res.error) {
+        console.error(res.error);
+        alert(res.error.message || "No se pudo cargar pacientes");
+        setPatients([]);
+      } else {
+        setPatients(res.data || []);
+      }
+      setLoading(false);
+    }
     load();
-  };
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const fmt = (iso) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
-  };
+  function openSRI() {
+    // Nota: no pongo URL específica porque puede variar. Abre el portal principal.
+    window.open("https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html", "_blank", "noopener,noreferrer");
+  }
 
-  const fmtMXN = (n) =>
-    n != null ? new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n) : "—";
+  async function copy(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Copiado.");
+    } catch {
+      alert("No se pudo copiar. Copia manualmente.");
+    }
+  }
 
   return (
-    <div className="mm-page">
-      <div className="mm-page-header">
-        <div>
-          <h1 className="mm-page-title">Facturación</h1>
-          <p className="mm-page-sub">Gestión de ingresos y cobros</p>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="mm-kpi-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginBottom: 24 }}>
-        {[
-          { label: "Ingresos totales", value: fmtMXN(stats.total),   icon: "💰", badge: "Histórico" },
-          { label: "Total cobrado",    value: fmtMXN(stats.paid),    icon: "✅", badge: "Pagado" },
-          { label: "Pendientes",       value: stats.pending,          icon: "⏳", badge: "Por cobrar" },
-          { label: "Vencidas",         value: stats.overdue,          icon: "⚠️", badge: "Requiere atención" },
-        ].map((k, i) => (
-          <div key={i} className="mm-kpi">
-            <div className="mm-kpi-icon">{k.icon}</div>
-            <div className="mm-kpi-label">{k.label}</div>
-            <div className="mm-kpi-value" style={{ fontSize: typeof k.value === "string" ? 20 : 30 }}>
-              {loading ? <span style={{ fontSize: 18, opacity: .4 }}>…</span> : k.value}
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
+      <div className="mm-card">
+        <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
+          <div>
+            <div className="mm-cardTitle">Facturación (SRI)</div>
+            <div style={{ opacity: 0.85, fontSize: 13 }}>
+              Opción simple: abre el SRI y copia los datos del paciente desde aquí.
             </div>
-            <div className="mm-kpi-badge">● {k.badge}</div>
           </div>
-        ))}
-      </div>
-
-      {/* Filter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
-        {[
-          { id: "all",       label: "Todas" },
-          { id: "pending",   label: "Pendientes" },
-          { id: "paid",      label: "Pagadas" },
-          { id: "overdue",   label: "Vencidas" },
-          { id: "cancelled", label: "Canceladas" },
-        ].map(f => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={`mm-btn mm-btn--sm ${filter === f.id ? "" : "mm-btn--ghost"}`}
-          >
-            {f.label}
+          <button className="mm-btn" type="button" onClick={openSRI}>
+            Ir al SRI
           </button>
-        ))}
-      </div>
+        </div>
 
-      {/* Table */}
-      <div className="mm-card" style={{ padding: 0 }}>
-        <div className="mm-card-accent-bar" />
-        <div className="mm-table-wrap">
-          <table className="mm-table">
-            <thead>
-              <tr>
-                <th>Paciente</th>
-                <th>Concepto</th>
-                <th>Monto</th>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--c-muted)", padding: "40px 0" }}>Cargando…</td></tr>
-              ) : invoices.length === 0 ? (
-                <tr><td colSpan={6}><div className="mm-empty">Sin facturas registradas</div></td></tr>
-              ) : invoices.map(inv => {
-                const chip = STATUS_CHIP[inv.status] ?? { label: inv.status, cls: "" };
-                return (
-                  <tr key={inv.id}>
-                    <td style={{ fontWeight: 600 }}>
-                      {inv.patients?.first_name} {inv.patients?.last_name}
-                    </td>
-                    <td style={{ color: "var(--c-text-2)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {inv.concept || inv.description || "Consulta médica"}
-                    </td>
-                    <td style={{ fontWeight: 700, color: "var(--c-text)" }}>{fmtMXN(inv.amount)}</td>
-                    <td style={{ color: "var(--c-muted)", fontSize: 13 }}>{fmt(inv.created_at)}</td>
-                    <td><span className={`mm-chip ${chip.cls}`}>{chip.label}</span></td>
-                    <td>
-                      {inv.status === "pending" && (
-                        <button
-                          onClick={() => markPaid(inv.id)}
-                          className="mm-btn mm-btn--sm"
-                          style={{ padding: "4px 12px", fontSize: 11 }}
-                        >
-                          ✓ Marcar pagada
-                        </button>
-                      )}
-                      {inv.status === "paid" && (
-                        <span style={{ fontSize: 12, color: "var(--c-muted)" }}>Pagada {fmt(inv.paid_at)}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ padding: 14, display: "grid", gap: 10 }}>
+          <input
+            className="mm-input"
+            placeholder="Buscar por nombre o cédula..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+
+          {loading && <div className="mm-empty">Cargando pacientes...</div>}
+
+          {!loading && filtered.length === 0 && (
+            <div className="mm-empty">No hay coincidencias.</div>
+          )}
+
+          {!loading && filtered.slice(0, 50).map((p) => {
+            const block = [
+              `Nombre: ${clean(p.name)}`,
+              `Identificación: ${clean(p.cedula)}`,
+              `Teléfono: ${clean(p.phone) || "-"}`,
+              `Correo: ${clean(p.email) || "-"}`,
+              `Dirección: ${clean(p.address) || "-"}`,
+            ].join("\n");
+
+            return (
+              <div key={p.id} className="mm-item" style={{ cursor: "default" }}>
+                <div className="mm-itemTop" style={{ alignItems: "flex-start" }}>
+                  <div style={{ display: "grid", gap: 2 }}>
+                    <div className="mm-itemName">{p.name}</div>
+                    <div style={{ fontSize: 13, opacity: 0.85 }}>
+                      CI/RUC: <b>{p.cedula}</b>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="mm-btn mm-btn--ghost" type="button" onClick={() => copy(p.cedula || "")}>
+                      Copiar CI
+                    </button>
+                    <button className="mm-btn mm-btn--ghost" type="button" onClick={() => copy(p.name || "")}>
+                      Copiar nombre
+                    </button>
+                    <button className="mm-btn mm-btn--ghost" type="button" onClick={() => copy(block)}>
+                      Copiar todo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mm-itemMeta">
+                  <div><b>Correo:</b> {p.email || "-"}</div>
+                  <div><b>Dirección:</b> {p.address || "-"}</div>
+                  <div><b>Tel:</b> {p.phone || "-"}</div>
+                </div>
+              </div>
+            );
+          })}
+
+          {!loading && filtered.length > 50 && (
+            <div className="mm-hint">
+              Mostrando 50 resultados (filtra más para encontrar rápido).
+            </div>
+          )}
         </div>
       </div>
     </div>

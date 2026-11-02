@@ -4,6 +4,9 @@ import { supabase } from "./lib/supabase";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Patients from "./pages/Patients";
+import PatientDetail from "./pages/PatientDetail";
+import VisitDetail from "./pages/VisitDetail";
+import PrescriptionDetail from "./pages/PrescriptionDetail";
 import Agenda from "./pages/Agenda";
 import Billing from "./pages/Billing";
 import FarmaciaCaja from "./pages/FarmaciaCaja";
@@ -82,7 +85,10 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/patients/*" element={<Patients />} />
+          <Route path="/patients" element={<Patients />} />
+          <Route path="/patients/:id" element={<PatientDetail />} />
+          <Route path="/visits/:id" element={<VisitDetail />} />
+          <Route path="/visits/:id/prescription" element={<PrescriptionDetail />} />
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/billing" element={<Billing />} />
           <Route path="/caja" element={<FarmaciaCaja />} />
