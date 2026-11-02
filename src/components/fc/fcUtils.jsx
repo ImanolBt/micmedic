@@ -109,19 +109,59 @@ export const SEED_EXPENSES = [
   ["Manejo de desechos", "ANUAL"], ["Permiso de funcionamiento", "ANUAL"], ["Patente", "ANUAL"],
 ];
 
-/* Selector de producto agrupado por tipo */
-export function ProductOptions({ products }) {
-  return TYPES.map((t) => {
-    const list = products.filter((p) => p.type === t.id);
-    if (!list.length) return null;
-    return (
-      <optgroup key={t.id} label={t.label}>
-        {list.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} — costo {fmtUSD(p.cost)} · venta {fmtUSD(p.price)}
-          </option>
-        ))}
-      </optgroup>
-    );
-  });
+/* Opciones para el buscador (SearchPick) */
+const TYPE_ORDER = { MEDICAMENTO: 0, HIDRATACION: 1, INSUMO: 2 };
+export const TYPE_ICON = { MEDICAMENTO: "💊", HIDRATACION: "💧", INSUMO: "🧷", PROCEDIMIENTO: "🩹" };
+export const GROUP_LABEL = { MEDICAMENTO: "Medicamentos", HIDRATACION: "Hidratación", INSUMO: "Insumos" };
+
+export const productPickItems = (products, { showPrice = true } = {}) =>
+  [...products]
+    .sort((a, b) => (TYPE_ORDER[a.type] - TYPE_ORDER[b.type]) || a.name.localeCompare(b.name, "es"))
+    .map((p) => ({
+      id: p.id,
+      label: p.name,
+      keywords: `${p.code ?? ""} ${typeInfo(p.type).label}`,
+      sub: `${p.code ?? ""} · costo ${fmtUSD(p.cost)}`,
+      right: showPrice ? fmtUSD(p.price) : fmtUSD(p.cost),
+      group: `${TYPE_ICON[p.type]} ${GROUP_LABEL[p.type] ?? p.type}`,
+      kind: "product",
+      data: p,
+    }));
+
+export const procedurePickItems = (procs) =>
+  procs.map((p) => ({
+    id: "proc-" + p.id,
+    label: p.name,
+    keywords: "procedimiento",
+    sub: `${(p.fc_procedure_items ?? []).length} insumos · costo ${fmtUSD(procedureCost(p))}`,
+    right: fmtUSD(procedurePrice(p)),
+    group: "🩹 Procedimientos",
+    kind: "procedure",
+    data: p,
+  }));
+
+/* ¿El error es porque faltan las tablas? */
+export const isMissingTable = (err) =>
+  !!err && (err.code === "42P01" || err.code === "PGRST205" || err.code === "PGRST200" ||
+    /does not exist|schema cache|Could not find the table/i.test(err.message ?? ""));
+
+/* Resumen de un día de caja */
+export function summarizeDay(cash, procs = [], prods = []) {
+  const consultIncome = num(cash?.consult_count) * num(cash?.consult_price);
+  const reserve = Math.min(num(cash?.consult_count) * num(cash?.reserve_per_consult), consultIncome);
+  const line = (l, k) => l.reduce((s, r) => s + num(r.qty) * num(r[k]), 0);
+  procs = procs ?? []; prods = prods ?? [];
+  const by = (t) => prods.filter((r) => r.type === t);
+  const med = by("MEDICAMENTO"), hid = by("HIDRATACION"), ins = by("INSUMO");
+  const procIncome = line(procs, "unit_price"), procCost = line(procs, "unit_cost");
+  const prodIncome = line(prods, "unit_price");
+  const repMed = line(med, "unit_cost"), repHid = line(hid, "unit_cost"), repIns = line(ins, "unit_cost");
+  const total = consultIncome + procIncome + prodIncome;
+  const costs = repMed + repHid + repIns + procCost;
+  const toSave = reserve + costs;
+  return {
+    consultIncome, reserve, procIncome, procCost, prodIncome,
+    medIncome: line(med, "unit_price"), hidIncome: line(hid, "unit_price"), insIncome: line(ins, "unit_price"),
+    repMed, repHid, repIns, total, costs, toSave, profit: total - toSave,
+  };
 }

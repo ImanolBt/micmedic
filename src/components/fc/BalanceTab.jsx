@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { fmtUSD, num, round2, pct, loadSettings, saveSettings, SEED_EXPENSES, DEFAULT_SETTINGS } from "./fcUtils";
-import { summarizeDay } from "./CajaDiariaTab";
+import { summarizeDay } from "./fcUtils";
+import { useUI } from "../ui/kit";
 
 const monthNow = () => {
   const d = new Date();
@@ -21,7 +22,14 @@ const DIST = [
   { key: "dist_reinvest", label: "Reinversión",     color: "#8e44ad" },
 ];
 
+const shiftMonth = (m, n) => {
+  const [y, mo] = m.split("-").map(Number);
+  const d = new Date(y, mo - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
 export default function BalanceTab() {
+  const { toast, confirm } = useUI();
   const [month, setMonth] = useState(monthNow());
   const [days, setDays] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -29,9 +37,7 @@ export default function BalanceTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newExp, setNewExp] = useState({ name: "", period: "MENSUAL", amount: "" });
-  const [savedMsg, setSavedMsg] = useState("");
-
-  const flash = (m) => { setSavedMsg(m); setTimeout(() => setSavedMsg(""), 1800); };
+  const flash = (m) => toast(m, { duration: 1600 });
 
   const loadMonth = async (m) => {
     setLoading(true);
@@ -100,6 +106,9 @@ export default function BalanceTab() {
     flash("Gasto actualizado");
   };
   const removeExpense = async (id) => {
+    const e = expenses.find((x) => x.id === id);
+    const ok = await confirm({ title: `¿Eliminar el gasto “${e?.name}”?`, message: "Dejará de contarse en los gastos fijos de todos los meses.", confirmLabel: "Eliminar gasto", danger: true });
+    if (!ok) return;
     await supabase.from("fc_expenses").delete().eq("id", id);
     loadExpenses();
   };
@@ -114,20 +123,24 @@ export default function BalanceTab() {
   return (
     <>
       <div className="fc-toolbar">
-        <div className="fc-datebar">
-          <input className="mm-input" type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
-          <span className="fc-date-label" style={{ textTransform: "capitalize" }}>{monthLabel(month)}</span>
+        <div className="cj-daynav">
+          <button className="cj-arrow" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Mes anterior">‹</button>
+          <label className="cj-date">
+            <span className="cj-date-text" style={{ textTransform: "capitalize" }}>{month === monthNow() && <span className="cj-today">Este mes</span>}{monthLabel(month)}</span>
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Elegir mes" />
+          </label>
+          <button className="cj-arrow" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Mes siguiente">›</button>
+          {month !== monthNow() && <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={() => setMonth(monthNow())}>Volver a este mes</button>}
         </div>
-        {savedMsg && <span className="fc-saved">✓ {savedMsg}</span>}
       </div>
 
       {error && <div className="mm-alert mm-alert--error" style={{ marginBottom: 12 }}>⚠️ {error}</div>}
 
       <div className="mm-kpi-grid" style={{ marginBottom: 16 }}>
         {[
-          { icon: "💰", label: "Ingresos del mes", value: fmtUSD(t.income), badge: `${days.length} días con caja` },
-          { icon: "📦", label: "Reposición y costos", value: fmtUSD(t.costs), badge: "Productos + procedimientos" },
-          { icon: "🏠", label: "Gastos fijos del mes", value: fmtUSD(fixedMonthly), badge: "Mensuales + anuales/12" },
+          { icon: "💰", label: "Ingresos del mes", value: fmtUSD(t.income), badge: `${days.length} ${days.length === 1 ? "día" : "días"} con caja` },
+          { icon: "📦", label: "Para reponer", value: fmtUSD(t.costs), badge: "Lo que cuesta volver a comprar" },
+          { icon: "🏠", label: "Gastos fijos del mes", value: fmtUSD(fixedMonthly), badge: "Anuales divididos para 12" },
           { icon: t.net >= 0 ? "📈" : "📉", label: "Utilidad neta", value: fmtUSD(t.net), badge: `Margen neto ${pct(t.margin)}` },
         ].map((k, i) => (
           <div key={i} className="mm-kpi">
@@ -141,7 +154,7 @@ export default function BalanceTab() {
 
       <div className="fc-split">
         <div className="mm-card">
-          <div className="mm-card-title" style={{ marginBottom: 12 }}>Ingresos por fuente</div>
+          <div className="mm-card-title" style={{ marginBottom: 12 }}>¿De dónde vino el dinero?</div>
           {[
             { label: "Consultas", v: t.consult, extra: `${t.consults} consultas`, color: "#6fa832" },
             { label: "Procedimientos", v: t.proc, color: "#2980b9" },
@@ -153,10 +166,10 @@ export default function BalanceTab() {
             </div>
           ))}
           <div className="fc-lines" style={{ marginTop: 14 }}>
-            <div><span>Reserva sostenimiento acumulada</span><b>{fmtUSD(t.reserve)}</b></div>
+            <div><span>Separado para el consultorio</span><b>{fmtUSD(t.reserve)}</b></div>
             <div><span>Gastos fijos a cubrir</span><b>{fmtUSD(fixedMonthly)}</b></div>
             <div className="fc-line-total">
-              <span>{t.reserve >= fixedMonthly ? "✅ La reserva cubre los gastos fijos" : "⚠️ Falta para cubrir gastos fijos"}</span>
+              <span>{t.reserve >= fixedMonthly ? "✓ Lo separado alcanza para los gastos fijos" : "Falta separar para cubrir los gastos fijos"}</span>
               <b className={t.reserve >= fixedMonthly ? "fc-pos" : "fc-neg"}>{fmtUSD(t.reserve - fixedMonthly)}</b>
             </div>
           </div>
@@ -177,7 +190,7 @@ export default function BalanceTab() {
           <div className="fc-stack">
             {DIST.map((d) => <div key={d.key} style={{ flex: num(settings[d.key]) || 0, background: d.color }} />)}
           </div>
-          {distTotal !== 100 && <div className="mm-alert mm-alert--warn" style={{ marginTop: 10 }}>Los porcentajes suman {distTotal}% (deberían sumar 100%).</div>}
+          {distTotal !== 100 && <div className="mm-alert mm-alert--warn" style={{ marginTop: 10 }}>Los porcentajes suman {distTotal}%. Ajústalos para que sumen 100%.</div>}
         </div>
       </div>
 
@@ -190,7 +203,7 @@ export default function BalanceTab() {
             <thead><tr><th>Fecha</th><th className="fc-r">Consultas</th><th className="fc-r">Procedimientos</th><th className="fc-r">Productos</th><th className="fc-r">Total cobrado</th><th className="fc-r">A guardar</th><th className="fc-r">Ganancia</th><th style={{ width: 140 }}></th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={8} className="fc-loading">Cargando…</td></tr> :
-                days.length === 0 ? <tr><td colSpan={8}><div className="mm-empty">No hay cajas registradas este mes</div></td></tr> :
+                days.length === 0 ? <tr><td colSpan={8}><div className="mm-empty">No hay días con caja registrada en este mes. Los días aparecen aquí cuando registras algo en Caja diaria.</div></td></tr> :
                 days.map((d) => (
                   <tr key={d.date}>
                     <td style={{ fontWeight: 600, textTransform: "capitalize" }}>{new Date(d.date + "T12:00:00").toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" })}</td>
@@ -222,7 +235,7 @@ export default function BalanceTab() {
           <div className="mm-card-sub" style={{ marginBottom: 12 }}>Los anuales se dividen para 12 automáticamente</div>
           {expenses.length === 0 && (
             <div className="mm-empty" style={{ padding: 16 }}>
-              <button className="mm-btn mm-btn--sm" onClick={seedExpenses}>⚡ Cargar gastos base (arriendo, enfermera, luz…)</button>
+              <button className="mm-btn mm-btn--sm" onClick={seedExpenses}>Cargar gastos base: arriendo, enfermera, luz, agua…</button>
             </div>
           )}
           {expenses.map((e) => (
@@ -251,7 +264,7 @@ export default function BalanceTab() {
         {/* Proyección */}
         <div className="mm-card">
           <div className="mm-card-title" style={{ marginBottom: 4 }}>Proyección y punto de equilibrio</div>
-          <div className="mm-card-sub" style={{ marginBottom: 12 }}>Modelo del Balance Consultorio</div>
+          <div className="mm-card-sub" style={{ marginBottom: 12 }}>¿Cuántos pacientes necesitas al mes para no perder?</div>
           <div className="mm-row-2">
             <div className="mm-field"><label className="mm-label">Pacientes por día</label><input className="mm-input" type="number" min="0" value={settings.patients_per_day} onChange={setS("patients_per_day")} onBlur={persistSettings} /></div>
             <div className="mm-field"><label className="mm-label">Días trabajados al mes</label><input className="mm-input" type="number" min="0" value={settings.days_worked} onChange={setS("days_worked")} onBlur={persistSettings} /></div>
@@ -268,7 +281,7 @@ export default function BalanceTab() {
           </div>
           <div className="fc-reserve-box">
             <div>
-              <div className="mm-label">Reserva sostenimiento por consulta</div>
+              <div className="mm-label">Separar por consulta</div>
               <div className="mm-hint">Sugerida: {fmtUSD(proj.suggestedReserve)} (gastos fijos ÷ pacientes al mes)</div>
             </div>
             <div className="mm-flex">
@@ -281,7 +294,7 @@ export default function BalanceTab() {
               }}>Usar sugerida</button>
             </div>
           </div>
-          <div className="mm-hint" style={{ marginTop: 8 }}>El precio de consulta y la reserva se usan por defecto al abrir una nueva Caja Diaria.</div>
+          <div className="mm-hint" style={{ marginTop: 8 }}>El precio de consulta y lo que se separa por consulta se usan al abrir la caja de un día nuevo.</div>
         </div>
       </div>
     </>

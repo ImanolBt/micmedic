@@ -121,3 +121,19 @@ begin
     execute format('create policy "fc_own" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
   end loop;
 end $$;
+
+-- ════════════════════════════════════════════════════════════════
+--  Tiempo real para el Dashboard (se actualiza solo)
+-- ════════════════════════════════════════════════════════════════
+do $$
+declare t text;
+begin
+  foreach t in array array['patients','medical_visits','appointments','prescriptions','certificates',
+                           'fc_daily_cash','fc_daily_products','fc_daily_procedures']
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception when others then null;  -- ya estaba agregada o la tabla no existe
+    end;
+  end loop;
+end $$;

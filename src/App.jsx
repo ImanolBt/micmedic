@@ -10,6 +10,7 @@ import PrescriptionDetail from "./pages/PrescriptionDetail";
 import Agenda from "./pages/Agenda";
 import Billing from "./pages/Billing";
 import FarmaciaCaja from "./pages/FarmaciaCaja";
+import { UIProvider } from "./components/ui/kit";
 
 const NAV = [
   { to: "/dashboard", icon: "📊", label: "Dashboard" },
@@ -82,6 +83,7 @@ export default function App() {
         </div>
       </header>
 
+      <UIProvider>
       <main>
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -95,6 +97,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
+      </UIProvider>
     </>
   );
 }

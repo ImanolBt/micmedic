@@ -1,308 +1,272 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { LiveDot, useAgo } from "../components/ui/kit";
+import { fmtUSD, summarizeDay, todayISO } from "../components/fc/fcUtils";
 
-function startOfTodayISO() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-function endOfTodayISO() {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d.toISOString();
+const WATCH = ["patients", "medical_visits", "appointments", "prescriptions", "certificates", "fc_daily_cash", "fc_daily_products", "fc_daily_procedures"];
+const DAYS = 14;
+
+const startOfDay = (d = new Date()) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const endOfDay = (d = new Date()) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
+const localISO = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
 }
 
-function fmtDateTime(dateISO) {
-  if (!dateISO) return "-";
-  return new Date(dateISO).toLocaleString("es-EC");
-}
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", hour12: false });
+const fmtWhen = (iso) => {
+  const d = new Date(iso);
+  const today = startOfDay();
+  const diff = Math.round((startOfDay(d) - today) / 86400000);
+  if (diff === 0) return `Hoy, ${fmtTime(iso)}`;
+  if (diff === -1) return `Ayer, ${fmtTime(iso)}`;
+  return d.toLocaleDateString("es-EC", { day: "2-digit", month: "short" }) + `, ${fmtTime(iso)}`;
+};
+
+const STATUS = {
+  scheduled: { label: "Pendiente", cls: "mm-chip--scheduled" },
+  done:      { label: "Atendida",  cls: "mm-chip--done" },
+  cancelled: { label: "Cancelada", cls: "mm-chip--cancelled" },
+};
 
 export default function Dashboard() {
   const nav = useNavigate();
+  const [d, setD] = useState(null);
+  const [live, setLive] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [pulse, setPulse] = useState(false);
+  const timer = useRef(null);
+  const ago = useAgo(updatedAt);
 
-  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    const t0 = startOfDay(), t1 = endOfDay();
+    const monthStart = new Date(t0.getFullYear(), t0.getMonth(), 1);
+    const since = startOfDay(new Date(Date.now() - (DAYS - 1) * 86400000));
+    const today = todayISO();
 
-  const [countPatients, setCountPatients] = useState(0);
-  const [countVisitsToday, setCountVisitsToday] = useState(0);
-  const [countCertsToday, setCountCertsToday] = useState(0);
-  const [countRxToday, setCountRxToday] = useState(0);
+    const [pTotal, pMonth, vToday, vRange, appts, rx, certs, recent, cashToday, cashMonth] = await Promise.all([
+      supabase.from("patients").select("id", { count: "exact", head: true }),
+      supabase.from("patients").select("id", { count: "exact", head: true }).gte("created_at", monthStart.toISOString()),
+      supabase.from("medical_visits").select("id", { count: "exact", head: true }).gte("visit_date", t0.toISOString()).lte("visit_date", t1.toISOString()),
+      supabase.from("medical_visits").select("visit_date").gte("visit_date", since.toISOString()).limit(5000),
+      supabase.from("appointments").select("id, patient_id, start_at, reason, status, patients(name, phone)").gte("start_at", t0.toISOString()).lte("start_at", t1.toISOString()).order("start_at"),
+      supabase.from("prescriptions").select("id", { count: "exact", head: true }).gte("date", t0.toISOString()).lte("date", t1.toISOString()),
+      supabase.from("certificates").select("id", { count: "exact", head: true }).gte("date", t0.toISOString()).lte("date", t1.toISOString()),
+      supabase.from("medical_visits").select("id, patient_id, visit_date, reason, cie10_code, cie10_name").order("visit_date", { ascending: false }).limit(7),
+      supabase.from("fc_daily_cash").select("*, fc_daily_procedures(qty, unit_cost, unit_price), fc_daily_products(type, qty, unit_cost, unit_price)").eq("date", today).maybeSingle(),
+      supabase.from("fc_daily_cash").select("*, fc_daily_procedures(qty, unit_cost, unit_price), fc_daily_products(type, qty, unit_cost, unit_price)").gte("date", localISO(monthStart)).lte("date", today),
+    ]);
 
-  const [recentVisits, setRecentVisits] = useState([]);
-
-  // mini agenda demo (si todavía no tienes tabla agenda)
-  const agendaDemo = useMemo(
-    () => [
-      { time: "08:30", who: "María Fernanda" },
-      { time: "10:00", who: "Carlos Andrés" },
-      { time: "11:30", who: "Paciente nuevo" },
-    ],
-    []
-  );
-
-  async function load() {
-    setLoading(true);
-
-    const from = startOfTodayISO();
-    const to = endOfTodayISO();
-
-    // 1) pacientes (total)
-    const p = await supabase.from("patients").select("id", { count: "exact", head: true });
-    if (!p.error) setCountPatients(p.count || 0);
-
-    // 2) consultas de hoy
-    const vToday = await supabase
-      .from("medical_visits")
-      .select("id", { count: "exact", head: true })
-      .gte("visit_date", from)
-      .lte("visit_date", to);
-
-    if (!vToday.error) setCountVisitsToday(vToday.count || 0);
-
-    // 3) certificados de hoy
-    const cToday = await supabase
-      .from("certificates")
-      .select("id", { count: "exact", head: true })
-      .gte("date", from)
-      .lte("date", to);
-
-    if (!cToday.error) setCountCertsToday(cToday.count || 0);
-
-    // 4) recetas de hoy (si existe tabla prescriptions)
-    const rToday = await supabase
-      .from("prescriptions")
-      .select("id", { count: "exact", head: true })
-      .gte("date", from)
-      .lte("date", to);
-
-    // Si no existe la tabla, no rompas el dashboard
-    if (rToday.error) {
-      setCountRxToday(0);
-    } else {
-      setCountRxToday(rToday.count || 0);
+    // Pacientes de las últimas consultas (en 2 pasos, igual que antes)
+    const ids = [...new Set((recent.data ?? []).map((v) => v.patient_id).filter(Boolean))];
+    let pmap = {};
+    if (ids.length) {
+      const pp = await supabase.from("patients").select("id, name, cedula").in("id", ids);
+      pmap = Object.fromEntries((pp.data ?? []).map((x) => [x.id, x]));
     }
 
-    // 5) últimas 6 consultas con paciente
-    // (nota: para join necesitas relación o lo hacemos en 2 pasos; aquí lo hago en 2 pasos seguro)
-    const v = await supabase
-      .from("medical_visits")
-      .select("id, patient_id, visit_date, reason, cie10_code, cie10_name")
-      .order("visit_date", { ascending: false })
-      .limit(6);
+    // Consultas por día
+    const buckets = Array.from({ length: DAYS }, (_, i) => {
+      const day = new Date(since.getTime() + i * 86400000);
+      return { key: localISO(day), day, n: 0 };
+    });
+    const byKey = Object.fromEntries(buckets.map((b) => [b.key, b]));
+    (vRange.data ?? []).forEach((v) => { const k = localISO(new Date(v.visit_date)); if (byKey[k]) byKey[k].n++; });
 
-    if (v.error) {
-      console.error(v.error);
-      setRecentVisits([]);
-      setLoading(false);
-      return;
-    }
+    const cashOk = !cashToday.error && !cashMonth.error;
+    const todaySum = cashToday.data ? summarizeDay(cashToday.data, cashToday.data.fc_daily_procedures, cashToday.data.fc_daily_products) : summarizeDay({}, [], []);
+    const monthSum = (cashMonth.data ?? []).reduce((acc, c) => {
+      const s = summarizeDay(c, c.fc_daily_procedures, c.fc_daily_products);
+      return { total: acc.total + s.total, profit: acc.profit + s.profit };
+    }, { total: 0, profit: 0 });
 
-    const visitRows = v.data || [];
-    const patientIds = [...new Set(visitRows.map((x) => x.patient_id).filter(Boolean))];
+    const ap = appts.data ?? [];
+    setD({
+      patients: pTotal.count ?? 0,
+      patientsMonth: pMonth.count ?? 0,
+      visitsToday: vToday.count ?? 0,
+      rx: rx.error ? null : rx.count ?? 0,
+      certs: certs.error ? null : certs.count ?? 0,
+      appts: ap,
+      apptsPending: ap.filter((a) => a.status === "scheduled").length,
+      apptsDone: ap.filter((a) => a.status === "done").length,
+      chart: buckets,
+      recent: (recent.data ?? []).map((v) => ({ ...v, patient: pmap[v.patient_id] })),
+      cashOk, todaySum, monthSum,
+    });
+    setUpdatedAt(new Date());
+    setPulse(true); setTimeout(() => setPulse(false), 900);
+  }, []);
 
-    let patientsMap = {};
-    if (patientIds.length) {
-      const pp = await supabase
-        .from("patients")
-        .select("id, name, cedula")
-        .in("id", patientIds);
-
-      if (!pp.error) {
-        patientsMap = Object.fromEntries((pp.data || []).map((x) => [x.id, x]));
-      }
-    }
-
-    const merged = visitRows.map((x) => ({
-      ...x,
-      patient: patientsMap[x.patient_id] || null,
-    }));
-
-    setRecentVisits(merged);
-    setLoading(false);
-  }
+  const schedule = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(load, 500);
+  }, [load]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line
-  }, []);
+    // Tiempo real: cualquier cambio en estas tablas actualiza el panel
+    let ch = supabase.channel("dashboard-live");
+    WATCH.forEach((table) => { ch = ch.on("postgres_changes", { event: "*", schema: "public", table }, schedule); });
+    ch.subscribe((status) => setLive(status === "SUBSCRIBED"));
+    // Respaldo: refresca cada 30 s y al volver a la pestaña
+    const poll = setInterval(load, 30000);
+    const onVis = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(poll);
+      clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load, schedule]);
+
+  const maxBar = Math.max(1, ...(d?.chart ?? []).map((b) => b.n));
+  const chartTotal = (d?.chart ?? []).reduce((s, b) => s + b.n, 0);
+  const todayLong = new Date().toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long" });
+  const nextAppt = d?.appts.find((a) => a.status === "scheduled" && new Date(a.start_at) >= new Date(Date.now() - 15 * 60000));
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14, display: "grid", gap: 14 }}>
-      <div className="mm-card">
-        <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-          <div>
-            <div className="mm-cardTitle">Dashboard</div>
-            <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Resumen rápido del consultorio (hoy y actividad reciente)
-            </div>
+    <div className="mm-page db">
+      {/* Bienvenida */}
+      <section className="db-hero">
+        <div className="db-hero-main">
+          <div className="db-hero-top">
+            <span className="db-date">{todayLong}</span>
+            <LiveDot live={live} label={live ? `En vivo · ${ago}` : `Actualizado ${ago}`} />
           </div>
-
-          <button className="mm-btn mm-btn--ghost" type="button" onClick={load}>
-            {loading ? "Actualizando..." : "Actualizar"}
-          </button>
-        </div>
-
-        {/* KPIs */}
-        <div style={{ padding: 14, display: "grid", gap: 12 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 12,
-            }}
-          >
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Pacientes</div>
-                <div className="mm-chip">Total</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countPatients}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Consultas</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countVisitsToday}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Certificados</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countCertsToday}
-              </div>
-            </div>
-
-            <div className="mm-item" style={{ cursor: "default" }}>
-              <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                <div className="mm-itemName">Recetas</div>
-                <div className="mm-chip">Hoy</div>
-              </div>
-              <div className="mm-itemMeta" style={{ fontSize: 28, fontWeight: 900, paddingTop: 4 }}>
-                {countRxToday}
-              </div>
-            </div>
-          </div>
-
-          <div className="mm-hint" style={{ margin: 0 }}>
-            Tip: esto se ve “vendible” porque resume volumen real y productividad del consultorio.
+          <h1 className="db-hello">{greeting()}, doctora</h1>
+          <p className="db-hero-sub">
+            {!d ? "Preparando el resumen del día…" :
+              d.appts.length === 0 ? "No hay citas agendadas para hoy." :
+              nextAppt ? <>Próxima cita a las <b>{fmtTime(nextAppt.start_at)}</b> con <b>{nextAppt.patients?.name ?? "paciente"}</b>.</> :
+              `Ya se atendieron todas las citas de hoy (${d.apptsDone}).`}
+          </p>
+          <div className="db-actions">
+            <button className="db-action" onClick={() => nav("/patients")}><span>👥</span>Buscar paciente</button>
+            <button className="db-action" onClick={() => nav("/agenda")}><span>📅</span>Agendar cita</button>
+            <button className="db-action" onClick={() => nav("/caja")}><span>🧾</span>Abrir caja de hoy</button>
           </div>
         </div>
+
+        <Link to="/caja" className={`db-cash ${pulse ? "pulse" : ""}`}>
+          <div className="db-cash-label">Caja de hoy</div>
+          {d && !d.cashOk ? (
+            <div className="db-cash-setup">Activa Farmacia &amp; Caja para ver aquí lo cobrado del día.</div>
+          ) : (
+            <>
+              <div className="db-cash-value">{d ? fmtUSD(d.todaySum.total) : "—"}</div>
+              <div className="db-cash-row"><span>Ganancia real</span><b>{d ? fmtUSD(d.todaySum.profit) : "—"}</b></div>
+              <div className="db-cash-row"><span>Para guardar</span><b>{d ? fmtUSD(d.todaySum.toSave) : "—"}</b></div>
+              <div className="db-cash-foot">Este mes: {d ? fmtUSD(d.monthSum.total) : "—"} cobrados</div>
+            </>
+          )}
+        </Link>
+      </section>
+
+      {/* KPIs */}
+      <div className="mm-kpi-grid db-kpis">
+        {[
+          { icon: "👥", label: "Pacientes", value: d?.patients.toLocaleString("es-EC"), badge: d ? `+${d.patientsMonth} nuevos este mes` : "", to: "/patients" },
+          { icon: "🩺", label: "Consultas de hoy", value: d?.visitsToday, badge: d ? `${chartTotal} en los últimos ${DAYS} días` : "" },
+          { icon: "📅", label: "Citas de hoy", value: d?.appts.length, badge: d ? `${d.apptsPending} pendientes · ${d.apptsDone} atendidas` : "", to: "/agenda" },
+          { icon: "📄", label: "Recetas y certificados hoy", value: d ? (d.rx ?? 0) + (d.certs ?? 0) : undefined, badge: d ? `${d.rx ?? 0} recetas · ${d.certs ?? 0} certificados` : "" },
+        ].map((k) => (
+          <div key={k.label} className={`mm-kpi ${k.to ? "db-kpi-link" : ""} ${pulse ? "pulse" : ""}`} onClick={() => k.to && nav(k.to)}>
+            <div className="mm-kpi-icon">{k.icon}</div>
+            <div className="mm-kpi-label">{k.label}</div>
+            <div className="mm-kpi-value">{d ? k.value : <span className="ui-skel" style={{ width: 60, height: 28 }} />}</div>
+            <div className="mm-kpi-badge">{k.badge}</div>
+          </div>
+        ))}
       </div>
 
-      {/* 2 columnas */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 14 }}>
-        {/* Últimas consultas */}
-        <div className="mm-card">
-          <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-            <div className="mm-cardTitle">Últimas consultas</div>
-            <div className="mm-chip">{loading ? "Cargando..." : `${recentVisits.length} recientes`}</div>
+      <div className="db-grid">
+        {/* Gráfico */}
+        <section className="mm-card">
+          <div className="mm-card-head">
+            <div>
+              <div className="mm-card-title">Consultas por día</div>
+              <div className="mm-card-sub">Últimos {DAYS} días · {chartTotal} consultas</div>
+            </div>
           </div>
+          <div className="db-chart" role="img" aria-label={`Consultas por día, últimos ${DAYS} días`}>
+            {(d?.chart ?? Array.from({ length: DAYS }, (_, i) => ({ key: i, n: 0, day: new Date() }))).map((b, i) => {
+              const isToday = i === DAYS - 1;
+              return (
+                <div key={b.key} className={`db-bar ${isToday ? "today" : ""}`} title={`${b.day.toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short" })}: ${b.n} consultas`}>
+                  <span className="db-bar-n">{b.n > 0 ? b.n : ""}</span>
+                  <div className="db-bar-fill" style={{ height: `${d ? Math.max(4, (b.n / maxBar) * 100) : 4}%` }} />
+                  <span className="db-bar-day">{d ? (isToday ? "Hoy" : b.day.toLocaleDateString("es-EC", { weekday: "narrow" }).toUpperCase() + b.day.getDate()) : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
-          <div style={{ padding: 14, display: "grid", gap: 10 }}>
-            {loading && <div className="mm-empty">Cargando...</div>}
-
-            {!loading && recentVisits.length === 0 && (
-              <div className="mm-empty">Aún no hay consultas registradas.</div>
-            )}
-
-            {!loading &&
-              recentVisits.map((v) => {
-                const diag =
-                  v.cie10_code && v.cie10_name
-                    ? `${v.cie10_name} (${v.cie10_code})`
-                    : v.cie10_name || v.cie10_code || "-";
-
+        {/* Agenda de hoy */}
+        <section className="mm-card db-agenda">
+          <div className="mm-card-head">
+            <div>
+              <div className="mm-card-title">Agenda de hoy</div>
+              <div className="mm-card-sub">{d ? `${d.appts.length} citas` : "Cargando…"}</div>
+            </div>
+            <Link to="/agenda" className="mm-btn mm-btn--ghost mm-btn--sm">Ver agenda</Link>
+          </div>
+          {d && d.appts.length === 0 ? (
+            <div className="db-empty">Día libre de citas. <Link to="/agenda">Agendar una cita</Link></div>
+          ) : (
+            <ul className="db-timeline">
+              {(d?.appts ?? []).map((a) => {
+                const st = STATUS[a.status] ?? { label: a.status, cls: "" };
+                const isNext = nextAppt?.id === a.id;
                 return (
-                  <div
-                    key={v.id}
-                    className="mm-item"
-                    onClick={() => nav(`/visits/${v.id}`)}
-                    style={{ cursor: "pointer" }}
-                    title="Abrir consulta"
-                  >
-                    <div className="mm-itemTop" style={{ alignItems: "flex-start" }}>
-                      <div style={{ display: "grid", gap: 2 }}>
-                        <div className="mm-itemName">
-                          {v.patient?.name || "Paciente"} — {v.reason || "Consulta"}
-                        </div>
-                        <div style={{ fontSize: 13, opacity: 0.85 }}>{fmtDateTime(v.visit_date)}</div>
-                      </div>
-
-                      <div className="mm-chip">Ver</div>
+                  <li key={a.id} className={`${a.status} ${isNext ? "next" : ""}`} onClick={() => a.patient_id && nav(`/patients/${a.patient_id}`)}>
+                    <span className="db-time">{fmtTime(a.start_at)}</span>
+                    <span className="db-tl-dot" />
+                    <div className="db-tl-body">
+                      <div className="db-tl-name">{a.patients?.name ?? "Paciente"}</div>
+                      <div className="db-tl-reason">{a.reason || "Consulta"}</div>
                     </div>
-
-                    <div className="mm-itemMeta">
-                      <div>
-                        <b>CI:</b> {v.patient?.cedula || "-"}
-                      </div>
-                      <div>
-                        <b>Diagnóstico:</b> {diag}
-                      </div>
-                    </div>
-                  </div>
+                    <span className={`mm-chip ${st.cls}`}>{isNext ? "Siguiente" : st.label}</span>
+                  </li>
                 );
               })}
-          </div>
-        </div>
-
-        {/* Agenda demo + accesos rápidos */}
-        <div style={{ display: "grid", gap: 14 }}>
-          <div className="mm-card">
-            <div className="mm-cardHead" style={{ justifyContent: "space-between" }}>
-              <div className="mm-cardTitle">Agenda del día</div>
-              <div className="mm-chip">Demo</div>
-            </div>
-
-            <div style={{ padding: 14 }}>
-              <div style={{ display: "grid", gap: 8 }}>
-                {agendaDemo.map((a, idx) => (
-                  <div key={idx} className="mm-item" style={{ cursor: "default" }}>
-                    <div className="mm-itemTop" style={{ alignItems: "center" }}>
-                      <div className="mm-itemName">{a.time}</div>
-                      <div className="mm-chip">{a.who}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                <button className="mm-btn" type="button" onClick={() => nav("/agenda")}>
-                  Abrir agenda
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mm-card">
-            <div className="mm-cardHead">
-              <div className="mm-cardTitle">Accesos rápidos</div>
-            </div>
-
-            <div style={{ padding: 14, display: "grid", gap: 10 }}>
-              <button className="mm-btn" type="button" onClick={() => nav("/patients")}>
-                Ir a pacientes
-              </button>
-
-              <button className="mm-btn mm-btn--ghost" type="button" onClick={() => nav("/patients")}>
-                Registrar consulta (desde ficha)
-              </button>
-
-              <div className="mm-hint" style={{ margin: 0 }}>
-                Lo normal es crear consulta desde la ficha del paciente.
-              </div>
-            </div>
-          </div>
-        </div>
+            </ul>
+          )}
+        </section>
       </div>
+
+      {/* Últimas consultas */}
+      <section className="mm-card" style={{ padding: 0, marginTop: 16 }}>
+        <div className="mm-card-accent-bar" />
+        <div className="mm-card-head" style={{ padding: "16px 20px 6px", marginBottom: 0 }}>
+          <div>
+            <div className="mm-card-title">Últimas consultas</div>
+            <div className="mm-card-sub">Se actualiza solo cuando se registra una consulta nueva</div>
+          </div>
+        </div>
+        <div className="mm-table-wrap">
+          <table className="mm-table">
+            <thead><tr><th>Paciente</th><th>Motivo</th><th>Diagnóstico (CIE-10)</th><th>Fecha</th></tr></thead>
+            <tbody>
+              {!d ? Array.from({ length: 4 }).map((_, i) => <tr key={i}><td colSpan={4}><div className="ui-skel" style={{ width: `${50 + i * 10}%` }} /></td></tr>) :
+                d.recent.length === 0 ? <tr><td colSpan={4}><div className="mm-empty">Aún no hay consultas registradas.</div></td></tr> :
+                d.recent.map((v) => (
+                  <tr key={v.id} className="mm-table-click" onClick={() => nav(`/visits/${v.id}`)}>
+                    <td style={{ fontWeight: 600 }}>{v.patient?.name ?? "—"}<div className="pt-meta">{v.patient?.cedula ?? ""}</div></td>
+                    <td className="db-ellipsis">{v.reason || "—"}</td>
+                    <td>{v.cie10_code ? <><span className="mm-chip mm-chip--blue">{v.cie10_code}</span> <span className="db-ellipsis-inline">{v.cie10_name}</span></> : <span className="mm-text-muted">Sin diagnóstico</span>}</td>
+                    <td className="mm-text-muted" style={{ whiteSpace: "nowrap" }}>{fmtWhen(v.visit_date)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
