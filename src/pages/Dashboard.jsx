@@ -93,7 +93,8 @@ export default function Dashboard() {
     setD({
       patients: pTotal.count ?? 0,
       patientsMonth: pMonth.count ?? 0,
-      visitsToday: vToday.count ?? 0,
+      visitsToday: buckets[buckets.length - 1]?.n ?? vToday.count ?? 0,
+      newToday: buckets[buckets.length - 1]?.nuevos ?? 0,
       rx: rx.error ? null : rx.count ?? 0,
       certs: certs.error ? null : certs.count ?? 0,
       appts: ap,
@@ -118,8 +119,8 @@ export default function Dashboard() {
     let ch = supabase.channel("dashboard-live");
     WATCH.forEach((table) => { ch = ch.on("postgres_changes", { event: "*", schema: "public", table }, schedule); });
     ch.subscribe((status) => setLive(status === "SUBSCRIBED"));
-    // Respaldo: refresca cada 30 s y al volver a la pestaña
-    const poll = setInterval(load, 30000);
+    // Respaldo: refresca cada 15 s y al volver a la pestaña
+    const poll = setInterval(load, 15000);
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -178,7 +179,7 @@ export default function Dashboard() {
       <div className="mm-kpi-grid db-kpis">
         {[
           { icon: "👥", label: "Pacientes", value: d?.patients.toLocaleString("es-EC"), badge: d ? `+${d.patientsMonth} nuevos este mes` : "", to: "/patients" },
-          { icon: "🩺", label: "Consultas de hoy", value: d?.visitsToday, badge: d ? `${chartTotal} atendidos en ${DAYS} días` : "" },
+          { icon: "🩺", label: "Atendidos hoy", value: d?.visitsToday, badge: d ? `${d.newToday} nuevos hoy · ${chartTotal} en ${DAYS} días` : "" },
           { icon: "📅", label: "Citas de hoy", value: d?.appts.length, badge: d ? `${d.apptsPending} pendientes · ${d.apptsDone} atendidas` : "", to: "/agenda" },
           { icon: "📄", label: "Recetas y certificados hoy", value: d ? (d.rx ?? 0) + (d.certs ?? 0) : undefined, badge: d ? `${d.rx ?? 0} recetas · ${d.certs ?? 0} certificados` : "" },
         ].map((k) => (
