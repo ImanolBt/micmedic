@@ -1461,3 +1461,21 @@ main:has(> .mm-page) { padding: 0; }
 .lg-input { min-width: 0; }
 .lg-input input { width: 0; }
 .lg-eye { flex-shrink: 0; }
+
+/* Reporte PDF */
+.rp-seg { width: fit-content; }
+.rp-seg button { padding: 8px 20px; }
+.rp-when { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.rp-when .mm-input { width: auto; min-width: 180px; }
+.rp-label { font-weight: 700; color: var(--c-brand-dark); font-size: 14px; }
+.rp-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rp-kind { text-align: left; display: grid; gap: 4px; align-content: start; padding: 14px; border-radius: var(--r-lg);
+  border: 1.5px solid var(--c-border); background: var(--c-surface); font: inherit; cursor: pointer; transition: all var(--dur-1); }
+.rp-kind:hover { border-color: var(--c-border-dark); transform: translateY(-1px); }
+.rp-kind.active { border-color: var(--c-brand); background: var(--c-brand-light); box-shadow: inset 0 0 0 1px var(--c-brand); }
+.rp-kind b { font-size: 14px; }
+.rp-kind.active b { color: var(--c-brand-dark); }
+.rp-kind span:last-child { font-size: 12px; color: var(--c-text-2); line-height: 1.4; }
+.rp-kind-ico { font-size: 20px; }
+.cj-daybar-right { display: flex; align-items: center; gap: 12px; }
+@media (max-width: 640px) { .rp-kinds { grid-template-columns: 1fr; } }

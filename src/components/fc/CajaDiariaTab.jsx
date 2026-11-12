@@ -6,6 +6,7 @@ import {
   procedureCost, procedurePrice, loadSettings, summarizeDay, productPickItems, procedurePickItems,
 } from "./fcUtils";
 import { SearchPick, Stepper, useUI } from "../ui/kit";
+import ReportModal from "./ReportModal";
 
 export { summarizeDay };
 
@@ -32,6 +33,7 @@ export default function CajaDiariaTab() {
   const [saveState, setSaveState] = useState("idle");
   const [flashId, setFlashId] = useState(null);
   const searchRef = useRef(null);
+  const [showReport, setShowReport] = useState(false);
 
   /* Catálogo + más usados */
   useEffect(() => {
@@ -222,10 +224,14 @@ export default function CajaDiariaTab() {
           <button className="cj-arrow" onClick={() => setDate(shiftDate(date, 1))} aria-label="Día siguiente">›</button>
           {!isToday && <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={() => setDate(todayISO())}>Volver a hoy</button>}
         </div>
-        <span className={`cj-save ${saveState}`}>
-          {saveState === "saving" ? "Guardando…" : saveState === "saved" ? "✓ Guardado" : cash ? "Todo guardado" : "Caja sin movimientos"}
-        </span>
+        <div className="cj-daybar-right">
+          <span className={`cj-save ${saveState}`}>
+            {saveState === "saving" ? "Guardando…" : saveState === "saved" ? "✓ Guardado" : cash ? "Todo guardado" : "Caja sin movimientos"}
+          </span>
+          <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={() => setShowReport(true)}>⬇ Descargar PDF</button>
+        </div>
       </div>
+      {showReport && <ReportModal initialDate={date} onClose={() => setShowReport(false)} />}
 
       {loading ? <div className="mm-card fc-loading">Abriendo la caja…</div> : (
         <div className="fc-caja-grid">

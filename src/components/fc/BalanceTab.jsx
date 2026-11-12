@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import { fmtUSD, num, round2, pct, loadSettings, saveSettings, SEED_EXPENSES, DEFAULT_SETTINGS } from "./fcUtils";
 import { summarizeDay } from "./fcUtils";
 import { useUI } from "../ui/kit";
+import ReportModal from "./ReportModal";
 
 const monthNow = () => {
   const d = new Date();
@@ -38,6 +39,7 @@ export default function BalanceTab() {
   const [error, setError] = useState("");
   const [newExp, setNewExp] = useState({ name: "", period: "MENSUAL", amount: "" });
   const flash = (m) => toast(m, { duration: 1600 });
+  const [showReport, setShowReport] = useState(false);
 
   const loadMonth = async (m) => {
     setLoading(true);
@@ -132,6 +134,8 @@ export default function BalanceTab() {
           <button className="cj-arrow" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Mes siguiente">›</button>
           {month !== monthNow() && <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={() => setMonth(monthNow())}>Volver a este mes</button>}
         </div>
+        <button className="mm-btn mm-btn--ghost mm-btn--sm" onClick={() => setShowReport(true)}>⬇ Descargar PDF</button>
+        {showReport && <ReportModal initialDate={`${month}-01`} initialPeriod="mes" onClose={() => setShowReport(false)} />}
       </div>
 
       {error && <div className="mm-alert mm-alert--error" style={{ marginBottom: 12 }}>⚠️ {error}</div>}
