@@ -47,17 +47,19 @@ export default function Dashboard() {
     const since = startOfDay(new Date(Date.now() - (DAYS - 1) * 86400000));
     const today = todayISO();
 
-    const [pTotal, pMonth, vToday, vRange, appts, rx, certs, recent, cashToday, cashMonth] = await Promise.all([
+    const [pTotal, pMonth, vToday, vRange, appts, rx, certs, recent, cashToday, cashMonth, pRange, cRange] = await Promise.all([
       supabase.from("patients").select("id", { count: "exact", head: true }),
       supabase.from("patients").select("id", { count: "exact", head: true }).gte("created_at", monthStart.toISOString()),
       supabase.from("medical_visits").select("id", { count: "exact", head: true }).gte("visit_date", t0.toISOString()).lte("visit_date", t1.toISOString()),
-      supabase.from("medical_visits").select("visit_date").gte("visit_date", since.toISOString()).limit(5000),
+      supabase.from("medical_visits").select("visit_date, patient_id").gte("visit_date", since.toISOString()).limit(5000),
       supabase.from("appointments").select("id, patient_id, start_at, reason, status, patients(name, phone)").gte("start_at", t0.toISOString()).lte("start_at", t1.toISOString()).order("start_at"),
       supabase.from("prescriptions").select("id", { count: "exact", head: true }).gte("date", t0.toISOString()).lte("date", t1.toISOString()),
-      supabase.from("certificates").select("id", { count: "exact", head: true }).gte("date", t0.toISOString()).lte("date", t1.toISOString()),
+      supabase.from("certificates").select("id", { count: "exact", head: true }).gte("created_at", t0.toISOString()).lte("created_at", t1.toISOString()),
       supabase.from("medical_visits").select("id, patient_id, visit_date, reason, cie10_code, cie10_name").order("visit_date", { ascending: false }).limit(7),
       supabase.from("fc_daily_cash").select("*, fc_daily_procedures(qty, unit_cost, unit_price), fc_daily_products(type, qty, unit_cost, unit_price)").eq("date", today).maybeSingle(),
       supabase.from("fc_daily_cash").select("*, fc_daily_procedures(qty, unit_cost, unit_price), fc_daily_products(type, qty, unit_cost, unit_price)").gte("date", localISO(monthStart)).lte("date", today),
+      supabase.from("patients").select("created_at").gte("created_at", since.toISOString()).limit(5000),
+      supabase.from("certificates").select("patient_id, created_at").gte("created_at", since.toISOString()).limit(5000),
     ]);
 
     // Pacientes de las últimas consultas (en 2 pasos, igual que antes)
@@ -71,10 +73,14 @@ export default function Dashboard() {
     // Consultas por día
     const buckets = Array.from({ length: DAYS }, (_, i) => {
       const day = new Date(since.getTime() + i * 86400000);
-      return { key: localISO(day), day, n: 0 };
+      return { key: localISO(day), day, n: 0, nuevos: 0, _att: new Set() };
     });
     const byKey = Object.fromEntries(buckets.map((b) => [b.key, b]));
-    (vRange.data ?? []).forEach((v) => { const k = localISO(new Date(v.visit_date)); if (byKey[k]) byKey[k].n++; });
+    // Atendidos = consultas registradas + pacientes con certificado ese día (sin repetir paciente)
+    (vRange.data ?? []).forEach((v, i) => { const b = byKey[localISO(new Date(v.visit_date))]; if (b) b._att.add(v.patient_id ?? "v" + i); });
+    (cRange.data ?? []).forEach((c, i) => { const b = byKey[localISO(new Date(c.created_at))]; if (b) b._att.add(c.patient_id ?? "c" + i); });
+    (pRange.data ?? []).forEach((p) => { const b = byKey[localISO(new Date(p.created_at))]; if (b) b.nuevos++; });
+    buckets.forEach((b) => { b.n = b._att.size; delete b._att; });
 
     const cashOk = !cashToday.error && !cashMonth.error;
     const todaySum = cashToday.data ? summarizeDay(cashToday.data, cashToday.data.fc_daily_procedures, cashToday.data.fc_daily_products) : summarizeDay({}, [], []);
@@ -124,7 +130,8 @@ export default function Dashboard() {
     };
   }, [load, schedule]);
 
-  const maxBar = Math.max(1, ...(d?.chart ?? []).map((b) => b.n));
+  const maxBar = Math.max(1, ...(d?.chart ?? []).map((b) => Math.max(b.n, b.nuevos)));
+  const chartNew = (d?.chart ?? []).reduce((s, b) => s + b.nuevos, 0);
   const chartTotal = (d?.chart ?? []).reduce((s, b) => s + b.n, 0);
   const todayLong = new Date().toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long" });
   const nextAppt = d?.appts.find((a) => a.status === "scheduled" && new Date(a.start_at) >= new Date(Date.now() - 15 * 60000));
@@ -171,7 +178,7 @@ export default function Dashboard() {
       <div className="mm-kpi-grid db-kpis">
         {[
           { icon: "👥", label: "Pacientes", value: d?.patients.toLocaleString("es-EC"), badge: d ? `+${d.patientsMonth} nuevos este mes` : "", to: "/patients" },
-          { icon: "🩺", label: "Consultas de hoy", value: d?.visitsToday, badge: d ? `${chartTotal} en los últimos ${DAYS} días` : "" },
+          { icon: "🩺", label: "Consultas de hoy", value: d?.visitsToday, badge: d ? `${chartTotal} atendidos en ${DAYS} días` : "" },
           { icon: "📅", label: "Citas de hoy", value: d?.appts.length, badge: d ? `${d.apptsPending} pendientes · ${d.apptsDone} atendidas` : "", to: "/agenda" },
           { icon: "📄", label: "Recetas y certificados hoy", value: d ? (d.rx ?? 0) + (d.certs ?? 0) : undefined, badge: d ? `${d.rx ?? 0} recetas · ${d.certs ?? 0} certificados` : "" },
         ].map((k) => (
@@ -189,17 +196,25 @@ export default function Dashboard() {
         <section className="mm-card">
           <div className="mm-card-head">
             <div>
-              <div className="mm-card-title">Consultas por día</div>
-              <div className="mm-card-sub">Últimos {DAYS} días · {chartTotal} consultas</div>
+              <div className="mm-card-title">Pacientes por día</div>
+              <div className="mm-card-sub">Últimos {DAYS} días · {chartTotal} atendidos · {chartNew} pacientes nuevos</div>
+            </div>
+            <div className="db-legend">
+              <span><i className="att" />Atendidos</span>
+              <span><i className="new" />Nuevos</span>
             </div>
           </div>
-          <div className="db-chart" role="img" aria-label={`Consultas por día, últimos ${DAYS} días`}>
-            {(d?.chart ?? Array.from({ length: DAYS }, (_, i) => ({ key: i, n: 0, day: new Date() }))).map((b, i) => {
+          <div className="db-chart" role="img" aria-label={`Pacientes por día, últimos ${DAYS} días`}>
+            {(d?.chart ?? Array.from({ length: DAYS }, (_, i) => ({ key: i, n: 0, nuevos: 0, day: new Date() }))).map((b, i) => {
               const isToday = i === DAYS - 1;
+              const label = b.day.toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short" });
               return (
-                <div key={b.key} className={`db-bar ${isToday ? "today" : ""}`} title={`${b.day.toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short" })}: ${b.n} consultas`}>
-                  <span className="db-bar-n">{b.n > 0 ? b.n : ""}</span>
-                  <div className="db-bar-fill" style={{ height: `${d ? Math.max(4, (b.n / maxBar) * 100) : 4}%` }} />
+                <div key={b.key} className={`db-bar ${isToday ? "today" : ""}`} title={`${label}: ${b.n} atendidos · ${b.nuevos} nuevos`}>
+                  <span className="db-bar-n">{b.n + b.nuevos > 0 ? Math.max(b.n, b.nuevos) : ""}</span>
+                  <div className="db-bar-pair">
+                    <div className="db-bar-fill" style={{ height: `${d ? Math.max(3, (b.n / maxBar) * 100) : 3}%` }} />
+                    <div className="db-bar-fill new" style={{ height: `${d ? Math.max(3, (b.nuevos / maxBar) * 100) : 3}%` }} />
+                  </div>
                   <span className="db-bar-day">{d ? (isToday ? "Hoy" : b.day.toLocaleDateString("es-EC", { weekday: "narrow" }).toUpperCase() + b.day.getDate()) : ""}</span>
                 </div>
               );

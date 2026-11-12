@@ -21,23 +21,24 @@ function words(name) {
   return out;
 }
 
-/* Apellido paterno según cómo se escribe en Ecuador: Nombre(s) Apellido1 Apellido2 */
-function surnameIndex(w) {
-  if (w.length >= 3) return w.length - 2;
+/* En el consultorio se escribe como en la cédula: APELLIDO1 APELLIDO2 NOMBRE(S).
+   Devuelve dónde empiezan los nombres. */
+function namesIndex(w) {
+  if (w.length >= 3) return 2;
   if (w.length === 2) return 1;
-  return 0;
+  return w.length;
 }
 
 function sortKey(name, mode) {
   const w = words(name);
-  if (mode === "nombre" || w.length === 0) return norm(name);
-  const i = surnameIndex(w);
+  if (mode === "apellido" || w.length < 2) return norm(name);
+  const i = namesIndex(w);
   return norm([...w.slice(i), ...w.slice(0, i)].join(" "));
 }
 
 function firstLetter(name, mode) {
   const w = words(name);
-  const base = mode === "nombre" ? (w[0] ?? "") : (w[surnameIndex(w)] ?? "");
+  const base = mode === "nombre" && w.length > 1 ? (w[namesIndex(w)] ?? w[0] ?? "") : (w[0] ?? "");
   const ch = base.charAt(0).toUpperCase();
   if (ch === "Ñ") return "Ñ";
   const n = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -46,12 +47,12 @@ function firstLetter(name, mode) {
 
 function NameCell({ name, mode }) {
   const w = words(name);
-  if (mode === "nombre" || w.length < 2) return <span>{name}</span>;
-  const i = surnameIndex(w);
+  if (w.length < 2) return <span>{name}</span>;
+  const i = namesIndex(w);
   return (
     <span>
       {w.map((x, k) => (
-        <span key={k} className={k >= i ? "pt-surname" : ""}>{x}{k < w.length - 1 ? " " : ""}</span>
+        <span key={k} className={k < i ? "pt-surname" : ""}>{x}{k < w.length - 1 ? " " : ""}</span>
       ))}
     </span>
   );
@@ -60,8 +61,8 @@ function NameCell({ name, mode }) {
 function initials(name) {
   const w = words(name);
   if (!w.length) return "?";
-  const i = surnameIndex(w);
-  return ((w[0]?.[0] ?? "") + (w.length > 1 ? w[i]?.replace(/^.*\s/, "")[0] ?? "" : "")).toUpperCase();
+  const i = namesIndex(w);
+  return (((w[i] ?? w[0])?.replace(/^.*\s/, "")[0] ?? "") + (w[0]?.replace(/^.*\s/, "")[0] ?? "")).toUpperCase();
 }
 
 function ageLabel(birthdate) {
@@ -78,6 +79,9 @@ function ageLabel(birthdate) {
 }
 
 const allergyText = (a) => (Array.isArray(a) ? a.filter(Boolean).join(", ") : typeof a === "string" ? a.trim() : "");
+/* "NO REFIERE ALERGIAS", "NIEGA ALERGIAS"… no es una alergia real */
+const NO_ALLERGY = /no\s+refiere\s+alerg|alerg\w*\s*[:.-]?\s*(no\s+refiere|niega|ninguna|no\b)|niega\s+alerg|sin\s+alerg|^ninguna|^no$|^n\/?a$/i;
+const hasAllergy = (txt) => !!txt && !NO_ALLERGY.test(txt);
 
 export default function Patients() {
   const nav = useNavigate();
@@ -223,7 +227,7 @@ export default function Patients() {
             {loading ? "Cargando…" : filtered.length === 0 ? "Sin resultados" :
               `Mostrando ${((cur - 1) * PAGE_SIZE + 1).toLocaleString("es-EC")}–${Math.min(cur * PAGE_SIZE, filtered.length).toLocaleString("es-EC")} de ${filtered.length.toLocaleString("es-EC")}`}
           </span>
-          {mode === "apellido" && <span className="mm-hint">El apellido se resalta en <b className="pt-surname">verde</b></span>}
+          <span className="mm-hint">Los apellidos se resaltan en <b className="pt-surname">verde</b></span>
         </div>
         <div className="mm-table-wrap">
           <table className="mm-table">
@@ -252,14 +256,14 @@ export default function Patients() {
                         <div className={`mm-avatar pt-avatar ${p.sex === "M" ? "m" : "f"}`}>{initials(p.name)}</div>
                         <div>
                           <div className="pt-name"><NameCell name={p.name} mode={mode} /></div>
-                          <div className="pt-meta">{p.sex === "M" ? "Masculino" : p.sex === "F" ? "Femenino" : ""}{p.cedula ? ` · ${p.cedula}` : ""}{al ? " · ⚠ alergias" : ""}</div>
+                          <div className="pt-meta">{p.sex === "M" ? "Masculino" : p.sex === "F" ? "Femenino" : ""}{p.cedula ? ` · ${p.cedula}` : ""}{hasAllergy(al) ? " · ⚠ alergias" : ""}</div>
                         </div>
                       </div>
                     </td>
                     <td className="pt-mono pt-hide-sm">{p.cedula || "—"}</td>
                     <td>{ageLabel(p.birthdate)}</td>
                     <td className="pt-hide-sm">{p.phone ? <a href={`tel:${p.phone}`} onClick={(e) => e.stopPropagation()} className="pt-phone">{p.phone}</a> : "—"}</td>
-                    <td className="pt-hide-sm">{al ? <span className="mm-chip mm-chip--red" title={al}>⚠ {al.length > 28 ? al.slice(0, 28) + "…" : al}</span> : <span className="mm-text-muted">Ninguna</span>}</td>
+                    <td className="pt-hide-sm">{hasAllergy(al) ? <span className="mm-chip mm-chip--red" title={al}>⚠ {al.length > 28 ? al.slice(0, 28) + "…" : al}</span> : <span className="mm-text-muted" title={al || ""}>{al ? "No refiere" : "Ninguna"}</span>}</td>
                   </tr>
                 );
               })}
@@ -288,7 +292,7 @@ export default function Patients() {
               <button onClick={() => setShowNew(false)} className="mm-icon-btn" aria-label="Cerrar">✕</button>
             </div>
             <div className="pt-newform">
-              <div className="mm-hint" style={{ marginBottom: 4 }}>Escribe el nombre completo como en la cédula: <b>nombres y luego apellidos</b>.</div>
+              <div className="mm-hint" style={{ marginBottom: 4 }}>Escribe el nombre como en la cédula: <b>primero los apellidos y luego los nombres</b>.</div>
               <PatientForm onCreate={addPatient} disabled={saving} />
             </div>
           </div>
